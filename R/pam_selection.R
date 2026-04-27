@@ -482,6 +482,13 @@ build_prodadv_decision_table_data <- function(dt,
   
   init_sel <- unique(init_sel[, c("designation", "value"), drop = FALSE])
   names(init_sel)[names(init_sel) == "value"] <- "initial_decision"
+  review_designations <- unique(init_sel$designation)
+  
+  preds <- preds[
+    preds$designation %in% review_designations,
+    ,
+    drop = FALSE
+  ]
   
   entry_type <- unique(preds[, c("designation", "entryType"), drop = FALSE])
   
@@ -668,6 +675,8 @@ build_prodadv_review_plot_data <- function(dt,
   
   init_sel <- unique(init_sel[, c("designation", "value"), drop = FALSE])
   names(init_sel)[names(init_sel) == "value"] <- "initial_decision"
+  review_designations <- unique(init_sel$designation)
+  
   
   plot_sel <- NULL
   
@@ -761,6 +770,18 @@ build_prodadv_review_plot_data <- function(dt,
   sta_preds <- preds[
     preds$analysisId %in% sta_stamp_used &
       preds$trait %in% selected_traits,
+    ,
+    drop = FALSE
+  ]
+  
+  mta_preds <- mta_preds[
+    mta_preds$designation %in% review_designations,
+    ,
+    drop = FALSE
+  ]
+  
+  sta_preds <- sta_preds[
+    sta_preds$designation %in% review_designations,
     ,
     drop = FALSE
   ]
