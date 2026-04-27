@@ -14,7 +14,7 @@ coalesce_chr <- function(...) {
 }
 
 
-runInitialProdAdv = function(analysisId = as.numeric(Sys.time()),
+runInitialProdAdv <- function(analysisId = as.numeric(Sys.time()),
                              analysisIdName,
                              args,
                              dt_object){
@@ -97,6 +97,7 @@ runInitialProdAdv = function(analysisId = as.numeric(Sys.time()),
 
     n_selected <- sum(mta_preds_long$entryType != args$checkEntryTypeValue) * (args$topPctSelected / 100)
     n_selected <- as.integer(n_selected)
+    n_selected <- max(c(1,n_selected))
 
     index_selection <- order(mta_preds_long$index[mta_preds_long$entryType != args$checkEntryTypeValue], decreasing = TRUE)[1:n_selected]
     index_selection <- mta_preds_long$designation[mta_preds_long$entryType != args$checkEntryTypeValue][index_selection]
@@ -114,9 +115,11 @@ runInitialProdAdv = function(analysisId = as.numeric(Sys.time()),
     mta_preds_long$index_decision[mta_preds_long$entryType == args$checkEntryTypeValue] <- "CHECK"
   }
 
+  if (!exists("mta_preds_long")) {
   mta_preds_long <- as.data.frame(mta_preds_matrix)
   mta_preds_long$designation <- rownames(mta_preds_long)
   mta_preds_long$entryType <- unique(mta_preds[,c("designation","entryType")])[,"entryType"]
+  }
 
 
   #Apply trait-specific rules
@@ -171,29 +174,29 @@ runInitialProdAdv = function(analysisId = as.numeric(Sys.time()),
     trait_decision[,paste0(t,"_trait_decision")] <- decision
   }
 
-  mta_preds_long = cbind(mta_preds_long,trait_decision)
+  mta_preds_long <- cbind(mta_preds_long,trait_decision)
 
   #Apply trait decision rule
   if(args$decisionLogic == "All traits must pass"){
-    decision_set = mta_preds_long[,grep("trait_decision",colnames(mta_preds_long))]
-    initial_decision = apply(decision_set, 1, function(x) ifelse(any(x == "NOT SELECTED"),"NOT SELECTED","SELECTED"))
-    initial_decision[mta_preds_long$entryType == args$checkEntryTypeValue] = "CHECK"
+    decision_set <- mta_preds_long[,grep("trait_decision",colnames(mta_preds_long))]
+    initial_decision <- apply(decision_set, 1, function(x) ifelse(any(x == "NOT SELECTED"),"NOT SELECTED","SELECTED"))
+    initial_decision[mta_preds_long$entryType == args$checkEntryTypeValue] <- "CHECK"
   }else if(args$decisionLogic == "At least N traits pass"){
-    decision_set = mta_preds_long[,grep("trait_decision",colnames(mta_preds_long))]
-    count_selected = apply(decision_set, 1, function(x) sum(x == "SELECTED"))
-    initial_decision = ifelse(count_selected >= args$minTraitsPass, "SELECTED","NOT SELECTED")
-    initial_decision[mta_preds_long$entryType == args$checkEntryTypeValue] = "CHECK"
+    decision_set <- mta_preds_long[,grep("trait_decision",colnames(mta_preds_long))]
+    count_selected <- apply(decision_set, 1, function(x) sum(x == "SELECTED"))
+    initial_decision <- ifelse(count_selected >= args$minTraitsPass, "SELECTED","NOT SELECTED")
+    initial_decision[mta_preds_long$entryType == args$checkEntryTypeValue] <- "CHECK"
   }else if(args$decisionLogic == "Weighted index"){
-    decision_set = mta_preds_long[,grep("_decision",colnames(mta_preds_long))]
-    initial_decision = apply(decision_set, 1, function(x) ifelse(any(x == "NOT SELECTED"),"NOT SELECTED","SELECTED"))
-    initial_decision[mta_preds_long$entryType == args$checkEntryTypeValue] = "CHECK"
+    decision_set <- mta_preds_long[,grep("_decision",colnames(mta_preds_long))]
+    initial_decision <- apply(decision_set, 1, function(x) ifelse(any(x == "NOT SELECTED"),"NOT SELECTED","SELECTED"))
+    initial_decision[mta_preds_long$entryType == args$checkEntryTypeValue] <- "CHECK"
   }
 
-  mta_preds_long$initial_decision = initial_decision
+  mta_preds_long$initial_decision <- initial_decision
 
 
   #Create modifications table (new list: selection)
-  modifications = data.frame(module = "Init_prodAdv",
+  modifications <- data.frame(module = "Init_prodAdv",
                              analysisId = analysisId,
                              designation = mta_preds_long$designation,
                              reason = "initial_selection",
@@ -210,7 +213,7 @@ runInitialProdAdv = function(analysisId = as.numeric(Sys.time()),
       weight_value <- if (is.null(args$customWeights)) NULL else args$customWeights[t]
     }
 
-    arg_values = c(args$mtaStamp,
+    arg_values <- c(args$mtaStamp,
                    args$staStamp,
                    args$decisionLogic,
                    args$minTraitsPass,
@@ -246,7 +249,7 @@ runInitialProdAdv = function(analysisId = as.numeric(Sys.time()),
       .null_or_name(args$traitRules[[t]]$maxValue, "max_value")
     )
 
-    trait_model = data.frame(module = "Init_prodAdv",
+    trait_model <- data.frame(module = "Init_prodAdv",
                              analysisId = analysisId,
                              trait = t,
                              environment = NA,
@@ -254,27 +257,27 @@ runInitialProdAdv = function(analysisId = as.numeric(Sys.time()),
                              value = arg_values)
 
     if(t == args$traitsToEvaluate[[1]]){
-      modeling = trait_model
+      modeling <- trait_model
     }else{
-      modeling = rbind(modeling,trait_model)
+      modeling <- rbind(modeling,trait_model)
     }
 
   }
 
   #Create status table
-  status = data.frame(module = "Init_prodAdv",
+  status <- data.frame(module = "Init_prodAdv",
                       analysisId = analysisId,
                       analysisIdName = analysisIdName)
 
   #Update data object
   if(is.null(dt_object$modifications$selection)){
-    dt_object$modifications$selection = modifications
+    dt_object$modifications$selection <- modifications
   }else{
-    dt_object$modifications$selection = rbind(dt_object$modifications$selection,modifications)
+    dt_object$modifications$selection <- rbind(dt_object$modifications$selection,modifications)
   }
 
-  dt_object$modeling = rbind(dt_object$modeling,modeling)
-  dt_object$status = rbind(dt_object$status,status)
+  dt_object$modeling <- rbind(dt_object$modeling,modeling)
+  dt_object$status <- rbind(dt_object$status,status)
 
   dt_object
 
