@@ -18,6 +18,11 @@ runInitialProdAdv <- function(analysisId = as.numeric(Sys.time()),
                              analysisIdName,
                              args,
                              dt_object){
+  
+  check_entry_type_value <- args$checkEntryTypeValue
+  if (is.null(check_entry_type_value) || !nzchar(check_entry_type_value)) {
+    check_entry_type_value <- NULL
+  }
 
   #Filter MTA predictions
   preds <- dt_object$predictions
@@ -26,7 +31,16 @@ runInitialProdAdv <- function(analysisId = as.numeric(Sys.time()),
   mta_preds <- mta_preds[order(mta_preds$designation), ]
 
   #Filter treatments according to pre-selection
-  mta_preds <- mta_preds[mta_preds$designation %in% args$selectedCandidates | mta_preds$entryType == args$checkEntryTypeValue,]
+  if (is.null(check_entry_type_value)) {
+    mta_preds <- mta_preds[
+      mta_preds$designation %in% args$selectedCandidates,
+    ]
+  } else {
+    mta_preds <- mta_preds[
+      mta_preds$designation %in% args$selectedCandidates |
+        mta_preds$entryType == check_entry_type_value,
+    ]
+  }
 
 
   mta_preds_matrix <- matrix(nrow = length(unique(mta_preds$designation)), ncol = length(args$traitsToEvaluate))
@@ -95,12 +109,12 @@ runInitialProdAdv <- function(analysisId = as.numeric(Sys.time()),
     mta_preds_long$designation <- rownames(mta_preds_long)
     mta_preds_long$entryType <- unique(mta_preds[,c("designation","entryType")])[,"entryType"]
 
-    n_selected <- sum(mta_preds_long$entryType != args$checkEntryTypeValue) * (args$topPctSelected / 100)
+    n_selected <- sum(mta_preds_long$entryType != check_entry_type_value) * (args$topPctSelected / 100)
     n_selected <- as.integer(n_selected)
     n_selected <- max(c(1,n_selected))
 
-    index_selection <- order(mta_preds_long$index[mta_preds_long$entryType != args$checkEntryTypeValue], decreasing = TRUE)[1:n_selected]
-    index_selection <- mta_preds_long$designation[mta_preds_long$entryType != args$checkEntryTypeValue][index_selection]
+    index_selection <- order(mta_preds_long$index[mta_preds_long$entryType != check_entry_type_value], decreasing = TRUE)[1:n_selected]
+    index_selection <- mta_preds_long$designation[mta_preds_long$entryType != check_entry_type_value][index_selection]
     mta_preds_long$index_decision = NA
     if(length(index_selection) > 1){
       mta_preds_long$index_decision[mta_preds_long$designation %in% index_selection] <- "SELECTED"
@@ -111,8 +125,11 @@ runInitialProdAdv <- function(analysisId = as.numeric(Sys.time()),
     }else{
       mta_preds_long$index_decision <- "NOT SELECTED"
     }
-
-    mta_preds_long$index_decision[mta_preds_long$entryType == args$checkEntryTypeValue] <- "CHECK"
+    
+    if(!is.null(check_entry_type_value)){
+      mta_preds_long$index_decision[mta_preds_long$entryType == check_entry_type_value] <- "CHECK"
+    }
+   
   }
 
   if (!exists("mta_preds_long")) {
@@ -141,6 +158,9 @@ runInitialProdAdv <- function(analysisId = as.numeric(Sys.time()),
     }else if(trait_rules$ruleType == "Acceptable range"){
       decision <- trait_value >= trait_rules$minValue & trait_value <= trait_rules$maxValue
     }else if(trait_rules$ruleType == "% over check"){
+      if (is.null(check_entry_type_value)) {
+        stop("Checks are required when using a '% over check' trait rule.")
+      }
       check_value <- mean(trait_value[mta_preds_long$designation == trait_rules$referenceCheck])
       if(trait_rules$direction == "Higher is better"){
         if(trait_rules$threshold > 0){
@@ -158,7 +178,14 @@ runInitialProdAdv <- function(analysisId = as.numeric(Sys.time()),
       }
 
     }else if(trait_rules$ruleType == "% over mean"){
-      mean_value <- mean(trait_value[mta_preds_long$entryType != args$checkEntryTypeValue])
+      if (is.null(check_entry_type_value)) {
+        mean_value <- mean(trait_value, na.rm = TRUE)
+      } else {
+        mean_value <- mean(
+          trait_value[mta_preds_long$entryType != check_entry_type_value],
+          na.rm = TRUE
+        )
+      }
       if(trait_rules$direction == "Higher is better"){
         decision <- trait_value >= (mean_value + mean_value*(trait_rules$threshold/100))
       }else if(trait_rules$direction == "Lower is better"){
@@ -169,8 +196,10 @@ runInitialProdAdv <- function(analysisId = as.numeric(Sys.time()),
     decision <- as.character(decision)
     decision[decision == "TRUE"] <- "SELECTED"
     decision[decision == "FALSE"] <- "NOT SELECTED"
-    decision[mta_preds_long$entryType == args$checkEntryTypeValue] <- "CHECK"
-
+    if(!is.null(check_entry_type_value)){
+      decision[mta_preds_long$entryType == check_entry_type_value] <- "CHECK"
+    }
+    
     trait_decision[,paste0(t,"_trait_decision")] <- decision
   }
 
@@ -180,16 +209,24 @@ runInitialProdAdv <- function(analysisId = as.numeric(Sys.time()),
   if(args$decisionLogic == "All traits must pass"){
     decision_set <- mta_preds_long[,grep("trait_decision",colnames(mta_preds_long))]
     initial_decision <- apply(decision_set, 1, function(x) ifelse(any(x == "NOT SELECTED"),"NOT SELECTED","SELECTED"))
-    initial_decision[mta_preds_long$entryType == args$checkEntryTypeValue] <- "CHECK"
+    
+    if(!is.null(check_entry_type_value)){
+      initial_decision[mta_preds_long$entryType == check_entry_type_value] <- "CHECK"
+    }
+    
   }else if(args$decisionLogic == "At least N traits pass"){
     decision_set <- mta_preds_long[,grep("trait_decision",colnames(mta_preds_long))]
     count_selected <- apply(decision_set, 1, function(x) sum(x == "SELECTED"))
     initial_decision <- ifelse(count_selected >= args$minTraitsPass, "SELECTED","NOT SELECTED")
-    initial_decision[mta_preds_long$entryType == args$checkEntryTypeValue] <- "CHECK"
+    if(!is.null(check_entry_type_value)){
+      initial_decision[mta_preds_long$entryType == check_entry_type_value] <- "CHECK"
+    }
   }else if(args$decisionLogic == "Weighted index"){
     decision_set <- mta_preds_long[,grep("_decision",colnames(mta_preds_long))]
     initial_decision <- apply(decision_set, 1, function(x) ifelse(any(x == "NOT SELECTED"),"NOT SELECTED","SELECTED"))
-    initial_decision[mta_preds_long$entryType == args$checkEntryTypeValue] <- "CHECK"
+    if(!is.null(check_entry_type_value)){
+      initial_decision[mta_preds_long$entryType == check_entry_type_value] <- "CHECK"
+    }
   }
 
   mta_preds_long$initial_decision <- initial_decision
@@ -981,6 +1018,7 @@ apply_prodadv_trait_rule <- function(trait_df, rule_def, check_entry_type_value 
   }
   
   else if (identical(rule_def$ruleType, "% over check")) {
+    
     ref_check <- rule_def$referenceCheck
     
     check_value <- mean(
@@ -1012,10 +1050,14 @@ apply_prodadv_trait_rule <- function(trait_df, rule_def, check_entry_type_value 
   }
   
   else if (identical(rule_def$ruleType, "% over mean")) {
-    mean_value <- mean(
-      trait_value[trait_df$entryType != check_entry_type_value],
-      na.rm = TRUE
-    )
+    if (is.null(check_entry_type_value)) {
+      mean_value <- mean(trait_value, na.rm = TRUE)
+    } else {
+      mean_value <- mean(
+        trait_value[mta_preds_long$entryType != check_entry_type_value],
+        na.rm = TRUE
+      )
+    }
     
     if (!is.finite(mean_value)) {
       decision <- rep("NOT SELECTED", nrow(trait_df))
