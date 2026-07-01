@@ -633,11 +633,17 @@ staLMM <- function(
   boGid    <- aggregate(mydata[,"gid",    drop=FALSE], by=list(designation=mydata[,"designation"]), FUN=.first_sorted)
   boMother <- aggregate(mydata[,"mother", drop=FALSE], by=list(designation=mydata[,"designation"]), FUN=.first_sorted)
   boFather <- aggregate(mydata[,"father", drop=FALSE], by=list(designation=mydata[,"designation"]), FUN=.first_sorted)
-  boPipe   <- aggregate(mydata[,"pipeline", drop=FALSE], by=list(designation=mydata[,"designation"]),
-                         FUN=function(x) paste(unique(sort(x, decreasing=FALSE)), collapse=", "))
-  baseOrigin <- data.frame(designation=boGid$designation, gid=boGid$gid,
-                           mother=boMother$mother, father=boFather$father,
-                           pipeline=boPipe$pipeline, stringsAsFactors=FALSE)
+  if("pipeline" %in% colnames(mydata)){
+    boPipe <- aggregate(mydata[,"pipeline", drop=FALSE], by=list(designation=mydata[,"designation"]),
+                        FUN=function(x) paste(unique(sort(x, decreasing=FALSE)), collapse=", "))
+    baseOrigin <- data.frame(designation=boGid$designation, gid=boGid$gid,
+                             mother=boMother$mother, father=boFather$father,
+                             pipeline=boPipe$pipeline, stringsAsFactors=FALSE)
+  } else {
+    baseOrigin <- data.frame(designation=boGid$designation, gid=boGid$gid,
+                             mother=boMother$mother, father=boFather$father,
+                             pipeline=NA_character_, stringsAsFactors=FALSE)
+  }
   predictionsBind <- merge(predictionsBind,baseOrigin, by="designation", all.x=TRUE)
 
   ##########################################
