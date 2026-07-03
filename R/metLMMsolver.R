@@ -591,6 +591,29 @@ metLMMsolver <- function(
             randomTermProv <- unique(randomTermProv)
           }
           
+          ## Fix covariance-term alignment for Finlay-Wilkinson and similar models.
+          ## Shiny multi-select returns values in choices-order, which can misalign
+          ## the positional pairing between randomTerm and expCovariates vectors.
+          ## Ensure relationship kernels align with 'designation' and 'none' with 'envIndex'.
+          kernel_types <- c("geno", "genoA", "genoAD", "genoD", "pedigree", "weather")
+          for (ii in seq_along(randomTermProv)) {
+            rt <- randomTermProv[[ii]]
+            ec <- expCovariatesProv[[ii]]
+            if (length(rt) == length(ec) && length(rt) >= 2 &&
+                "designation" %in% rt && "envIndex" %in% rt) {
+              desig_idx <- which(rt == "designation")
+              env_idx   <- which(rt == "envIndex")
+              # Check if a kernel-type covariate is misaligned with envIndex
+              if (ec[env_idx] %in% kernel_types && grepl("^none", ec[desig_idx])) {
+                # Swap: put the kernel on designation, none on envIndex
+                tmp <- ec[desig_idx]
+                ec[desig_idx] <- ec[env_idx]
+                ec[env_idx] <- tmp
+                expCovariatesProv[[ii]] <- ec
+              }
+            }
+          }
+          
           use_formula = all_none_covariates(unlist(expCovariatesProv))
           
           #################################################################################
