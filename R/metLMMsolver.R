@@ -801,6 +801,10 @@ metLMMsolver <- function(
                     }else{
                       xx <- sommer::ism(prov[,randomTermProv2[irandom2]])$Z
                     }
+                    # For numeric covariates with a 1x1 identity kernel, align column names
+                    if(ncol(xx) == 1 && ncol(M) == 1){
+                      colnames(xx) <- colnames(M)
+                    }
                   }
                   
                   xxList[[irandom2]] = xx # model matrix for ith effect saved
