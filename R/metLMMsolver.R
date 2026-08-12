@@ -116,7 +116,16 @@ metLMMsolver <- function(
   if(is.null(analysisId)){stop("Please provide the STA analysisId to be analyzed", call. = FALSE)}
   if(is.null(trait)){stop("Please provide traits to be analyzed", call. = FALSE)}else{
     baseData <- phenoDTfile$predictions[which(phenoDTfile$predictions$analysisId %in% analysisId ),]
-    if(length(intersect(trait, unique(baseData[,"trait"]))) == 0){stop("The traits you have specified are not present in the analysisId provided.", call. = FALSE)}
+    # For TPP traits, resolve pheno_trait names for validation
+    traitsToCheck <- trait
+    tpp_config_check <- phenoDTfile$metadata$tpp_analysis_config
+    if (!is.null(tpp_config_check) && !is.null(tpp_config_check$trait_map)) {
+      traitsToCheck <- unique(c(
+        trait,
+        unlist(tpp_config_check$trait_map[intersect(names(tpp_config_check$trait_map), trait)])
+      ))
+    }
+    if(length(intersect(traitsToCheck, unique(baseData[,"trait"]))) == 0){stop("The traits you have specified are not present in the analysisId provided.", call. = FALSE)}
   }
   if(is.null(traitFamily)){traitFamily <- rep("quasi(link = 'identity', variance = 'constant')", length(trait))}
   if(!is.null(randomTerm)){
@@ -475,20 +484,54 @@ metLMMsolver <- function(
   metrics <- phenoDTfile$metrics
   metrics <- metrics[which(metrics$analysisId %in% analysisId),]
   myDataTraits <- fixedTermTrait <- randomTermTrait <- groupingTermTrait <- Mtrait <- envsTrait <- entryTypesTrait <- envCount <- list()
+  tppActualTraitMap <- list()  # stores iTrait -> actual_trait mapping for TPP traits
   for(iTrait in trait){ # iTrait = trait[1]
-    # filter for records available
-    vt <- which(mydata[,"trait"] == iTrait)
+    # --- TPP trait resolution ---
+    tpp_config <- phenoDTfile$metadata$tpp_analysis_config
+    actual_trait <- iTrait
+    tpp_env_filter <- NULL
+
+    if (!is.null(tpp_config) && iTrait %in% names(tpp_config$trait_map)) {
+      actual_trait <- tpp_config$trait_map[[iTrait]]
+      tpp_env_filter <- tpp_config$env_map[[iTrait]]
+    }
+    tppActualTraitMap[[iTrait]] <- actual_trait
+    # --- End TPP trait resolution ---
+
+    # filter for records available (use actual_trait for data lookup)
+    vt <- which(mydata[,"trait"] == actual_trait)
     if(length(vt) > 0){ # we have data for the trait
       prov <- mydata[vt,]
-      # filter by the environments to include
-      vte <- which(prov[,"environment"] %in% rownames(envsToInclude)[as.logical(envsToInclude[,iTrait])])
+      # --- TPP environment filter: create per-iteration local copy ---
+      envsToIncludeLocal <- envsToInclude
+      if (!is.null(tpp_env_filter)) {
+        valid_envs <- intersect(tpp_env_filter, rownames(envsToIncludeLocal))
+        if (length(valid_envs) < 2) {
+          warning(paste("TPP trait", iTrait, "skipped: fewer than 2 environments after filtering."))
+          next
+        }
+        # Log info if some env_filter environments not found in data
+        missing_envs <- setdiff(tpp_env_filter, rownames(envsToIncludeLocal))
+        if (length(missing_envs) > 0) {
+          message(paste("TPP trait", iTrait, ": env_filter environments not found in data:",
+                        paste(missing_envs, collapse = ", ")))
+        }
+        # Zero out environments not in the filter for the actual_trait column
+        if (actual_trait %in% colnames(envsToIncludeLocal)) {
+          envs_to_zero <- setdiff(rownames(envsToIncludeLocal), valid_envs)
+          envsToIncludeLocal[envs_to_zero, actual_trait] <- 0
+        }
+      }
+      # --- End TPP environment filter ---
+      # filter by the environments to include (use actual_trait for column lookup)
+      vte <- which(prov[,"environment"] %in% rownames(envsToIncludeLocal)[as.logical(envsToIncludeLocal[,actual_trait])])
       prov <- prov[vte,]
-      # remove bad environment based on h2 and r2
-      pipeline_metricsSub <- metrics[which(metrics$trait == iTrait & metrics$parameter %in% c("plotH2","H2","meanR2","r2", apply(expand.grid( c("plotH2","H2","meanR2","r2"), c("designation","mother","father")),1,function(f){paste(f,collapse = "_")}) )),]
+      # remove bad environment based on h2 and r2 (use actual_trait for metrics lookup)
+      pipeline_metricsSub <- metrics[which(metrics$trait == actual_trait & metrics$parameter %in% c("plotH2","H2","meanR2","r2", apply(expand.grid( c("plotH2","H2","meanR2","r2"), c("designation","mother","father")),1,function(f){paste(f,collapse = "_")}) )),]
       goodFields <- unique(pipeline_metricsSub[which((pipeline_metricsSub$value >= heritLB[iTrait]) & (pipeline_metricsSub$value <= heritUB[iTrait])),"environment"])
       prov <- prov[which(prov$environment %in% goodFields),]
-      # remove bad environment based on environment means
-      pipeline_metricsSub <- metrics[which(metrics$trait == iTrait & metrics$parameter %in% c("plotH2","H2","meanR2","r2", apply(expand.grid( c("mean"), c("designation","mother","father")),1,function(f){paste(f,collapse = "_")}) ) ),]
+      # remove bad environment based on environment means (use actual_trait for metrics lookup)
+      pipeline_metricsSub <- metrics[which(metrics$trait == actual_trait & metrics$parameter %in% c("plotH2","H2","meanR2","r2", apply(expand.grid( c("mean"), c("designation","mother","father")),1,function(f){paste(f,collapse = "_")}) ) ),]
       goodFieldsMean <- unique(pipeline_metricsSub[which((pipeline_metricsSub$value > meanLB[iTrait]) & (pipeline_metricsSub$value < meanUB[iTrait])),"environment"])
       prov <- prov[which(prov$environment %in% goodFieldsMean),]
       envCount[[iTrait]] <- unique(prov$environment)
@@ -949,10 +992,12 @@ metLMMsolver <- function(
     randomTermSub <- randomTermTrait[[iTrait]] # extract random formula
     ## deregress if needed
     VarFull <- var(mydataSub[,"predictedValue"], na.rm = TRUE) # total variance
+    # Use actual_trait (pheno_trait) for modeling lookup from STA results
+    modelingLookupTrait <- if (!is.null(tppActualTraitMap[[iTrait]])) tppActualTraitMap[[iTrait]] else iTrait
     if(length(analysisId)>1){
-      effectTypeTrait <- phenoDTfile$modeling[which(phenoDTfile$modeling$analysisId %in% analysisId & phenoDTfile$modeling$trait == iTrait & phenoDTfile$modeling$parameter == "designationEffectType"),"value"]
+      effectTypeTrait <- phenoDTfile$modeling[which(phenoDTfile$modeling$analysisId %in% analysisId & phenoDTfile$modeling$trait == modelingLookupTrait & phenoDTfile$modeling$parameter == "designationEffectType"),"value"]
     }else{
-      effectTypeTrait <- phenoDTfile$modeling[which(phenoDTfile$modeling$analysisId == analysisId & phenoDTfile$modeling$trait == iTrait & phenoDTfile$modeling$parameter == "designationEffectType"),"value"]
+      effectTypeTrait <- phenoDTfile$modeling[which(phenoDTfile$modeling$analysisId == analysisId & phenoDTfile$modeling$trait == modelingLookupTrait & phenoDTfile$modeling$parameter == "designationEffectType"),"value"]
     }
    
     if(names(sort(table(effectTypeTrait), decreasing = TRUE))[1] == "BLUP"){ # if STA was BLUPs deregress
@@ -1637,8 +1682,10 @@ metLMMsolver <- function(
       predictionsTrait <- rbind(predictionsTrait, provx[,colnames(predictionsTrait)])
     }
     #
+    # Use actual_trait (pheno_trait) for predSta query, but keep iTrait for output labeling
+    predSta_trait <- if (!is.null(tppActualTraitMap[[iTrait]])) tppActualTraitMap[[iTrait]] else iTrait
     predSta <- phenoDTfile$predictions[which(phenoDTfile$predictions$analysisId %in% analysisId &
-                                               phenoDTfile$predictions$trait == iTrait &
+                                               phenoDTfile$predictions$trait == predSta_trait &
                                                phenoDTfile$predictions$environment %in% envCount[[iTrait]]),]
     ## Save variance-component metrics
     
