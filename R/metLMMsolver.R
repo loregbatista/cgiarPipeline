@@ -1439,23 +1439,21 @@ metLMMsolver <- function(
             environment = envCol
           )
           
-          if (use_formula && length(term_vars) > 1L) {
-            geno_vars <- c("designation", "designationA", "designationD",
-                           "gid", "mother", "father")
+          #if (use_formula && length(term_vars) > 1L) {
+           # geno_vars <- c("designation", "designationA", "designationD","gid", "mother", "father")            
+           # env_vars <- setdiff(term_vars, geno_vars)
             
-            env_vars <- setdiff(term_vars, geno_vars)
-            
-            if (length(env_vars) > 0L) {
-              env_name <- paste(env_vars, collapse = ":")
+           # if (length(env_vars) > 0L) {
+           #   env_name <- paste(env_vars, collapse = ":")
               
-              prov$designation <- paste(
-                env_name,
-                sub("^:+", "", prov$designation),
-                sep = ":"
-              )
-              prov$environment <- env_name
-            }
-          }
+           #   prov$designation <- paste(
+           #     env_name,
+           #     sub("^:+", "", prov$designation),
+           #     sep = ":"
+           #   )
+           #   prov$environment <- env_name
+            #}
+          #}
           
           is_fw_term <- "envIndex" %in% term_vars
           feToAdd <- intersect(term_vars, fixedEffects)

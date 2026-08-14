@@ -1087,7 +1087,63 @@ metASREML <- function(phenoDTfile = NULL,
       )
     )
     phenoDTfile$modeling <- rbind(phenoDTfile$modeling, currentModeling[, colnames(phenoDTfile$modeling)])
+    #Adding avgcheck and avgtest, corr between env
+    dataT<-pp[["designation"]]
+    meanType<-aggregate(predictedValue ~ entryType, data = dataT, FUN = mean)
+    phenoDTfile$metrics <- rbind(
+      phenoDTfile$metrics,
+      data.frame(
+        module = "mtaAsr",
+        analysisId = mtaAnalysisId,
+        trait = iTrait,
+        environment = "across",
+        parameter = paste0("mean_",meanType[,1]),
+        method = rep("sum/n",nrow(meanType)),
+        value = meanType[,2],
+        stdError = rep(NA,nrow(meanType))
+      )
+     )
     
+    testGxE=which(c("environment_designation", "designation_environment",
+                    "environment:designation", "designation:environment") %in% names(pp)==T)
+    if("GenCorrMat" %in% names(pp)){predGenCorrMat<-pp[["GenCorrMat"]];meth1=rep("GenCorrFA",nrow(predGenCorrMat))}else{
+      if(length(testGxE)!=0){
+        predGxE<-pp[[testGxE]]
+        df<-tidyr::separate(predGxE,designation,into=c("environment","designation"),sep=":")
+        wide <- data.frame(tidyr::pivot_wider(df,id_cols = designation,names_from = environment,values_from = predictedValue))
+        rownames(wide)<-wide[,1]
+        wide<-as.matrix(wide[,-1])
+        CorrMat <- round(stats::cor(wide, use="pairwise.complete.obs"),2)
+        upper <- which(upper.tri(CorrMat), arr.ind = TRUE)
+        predGenCorrMat <- data.frame(
+          designation = rownames(CorrMat)[upper[,1]],
+          predictedValue = CorrMat[upper],
+          stdError = rep(NA, dim(upper)[1]),
+          reliability = rep(NA, dim(upper)[1]),
+          trait = iTrait,
+          effectType = "GenCorrMat" ,
+          environment = colnames(CorrMat)[upper[,2]],
+          entryType = "unknown"
+        )
+        meth1=rep("PearsonCorrelation",nrow(predGenCorrMat))
+      }
+    }
+    if(length(testGxE)!=0){
+      phenoDTfile$metrics <- rbind(
+        phenoDTfile$metrics,
+        data.frame(
+          module = "mtaAsr",
+          analysisId = mtaAnalysisId,
+          trait = iTrait,
+          environment = "across",
+          parameter = paste0(predGenCorrMat$designation,"_",predGenCorrMat$environment),
+          method = meth1,
+          value = predGenCorrMat$predictedValue,
+          stdError = rep(NA,nrow(predGenCorrMat))
+        )
+      )
+    }
+                         
     }else{
       # if model failed
       message(paste("Mixed model failed for trait",iTrait,". Aggregating and assuming h2 = 0 \n"))
@@ -1265,6 +1321,42 @@ metASREML <- function(phenoDTfile = NULL,
       call. = FALSE
     )
   }
+##Adding corr traits
+  traitL <- lapply(predictionsList, `[`, , c("designation", "effectType","predictedValue"))  
+  traitL <- lapply(predictionsList, function(df) {
+    df[df$effectType == "designationIdv",
+       c("designation", "predictedValue"),
+       drop = FALSE]
+  })  
+  resTL <- Reduce(function(x, y)
+    merge(x, y, by = "designation", all = TRUE),
+    Map(function(df, nm) {
+      names(df)[2] <- nm
+      df
+    }, traitL, names(traitL)))  
+  rownames(resTL)<-resTL[,1]
+  resTL<-as.matrix(resTL[,-1])
+  CorrMatT <- round(stats::cor(resTL, use="pairwise.complete.obs"),2)
+  upper <- which(upper.tri(CorrMatT), arr.ind = TRUE)
+  predCorrT <- data.frame(
+    designation = rownames(CorrMatT)[upper[,1]],
+    predictedValue = CorrMatT[upper],
+    environment = colnames(CorrMatT)[upper[,2]]
+  )
+  meth2=rep("PearsonCorrelation",nrow(predCorrT))  
+  phenoDTfile$metrics <- rbind(
+    phenoDTfile$metrics,
+    data.frame(
+      module = "mtaAsr",
+      analysisId = mtaAnalysisId,
+      trait = "CorrTrait",
+      environment = "across",
+      parameter = paste0(predCorrT$designation,"_",predCorrT$environment),
+      method = meth2,
+      value = predCorrT$predictedValue,
+      stdError = rep(NA,nrow(predCorrT))
+    )
+  )
   
   predictionsBind <- do.call(rbind, predictionsList)
   predictionsBind$analysisId <- mtaAnalysisId
