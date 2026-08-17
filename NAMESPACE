@@ -1,9 +1,10 @@
 importFrom("grDevices", "dev.cur", "dev.new", "dev.next", "dev.set")
 importFrom("graphics", "axis", "lines", "par", "points", "title")
 importFrom("stats", "cov", "dist", "median", "model.matrix", "optimize", "pbeta", "ppoints", "predict", "smooth.spline","var")
+importFrom("magrittr", "%>%")
 export(
        traitTransformation, newOutliersFun, modifExpDesign, equalizeTraits,
-       staLMM, metLMM, metLMMsolver, mtaLmmFlex, indexDesire, baseIndex, ocs, gpcp, rggMackay, rggPiepho, pgg,
+       staLMM, metLMM, metLMMsolver, met_rrblup, mtaLmmFlex, indexDesire, baseIndex, ocs, gpcp, rggMackay, rggPiepho, pgg,
        singleCrossMat, nasaPowerExtraction, summaryWeather, metASREML, funchunt, report_stats,
        numberFounders, individualVerification, markerAssistedSelection,
        gwas, manhattanPlot, freeFunction, premetLMMsolver, postmetLMMsolver,
