@@ -4,8 +4,10 @@ pgg <- function(
     trait=NULL, # per trait
     by=NULL,
     percentage=10,
+    cycle=NULL,
     verbose=TRUE
 ){
+  #save(phenoDTfile,analysisId,trait,by,percentage,verbose,file="pggt.RData")
   ## THIS FUNCTION CALCULATES THE PREDICTED GENETIC GAIN FOR TRAITS
   ## IS USED IN THE BANAL APP UNDER THE METRICS MODULES
   pggAnalysisId <- as.numeric(Sys.time())
@@ -35,21 +37,21 @@ pgg <- function(
     mydata <- merge(mydata, tpe, by="environment", all.x = TRUE)
   }
 
-  myPed <- phenoDTfile$data$pedigree
-  paramsPed <- phenoDTfile$metadata$pedigree
-  colnames(myPed) <- cgiarBase::replaceValues(colnames(myPed), Search = paramsPed$value, Replace = paramsPed$parameter )
+  #myPed <- phenoDTfile$data$pedigree
+  #paramsPed <- phenoDTfile$metadata$pedigree
+  #colnames(myPed) <- cgiarBase::replaceValues(colnames(myPed), Search = paramsPed$value, Replace = paramsPed$parameter )
 
   if(nrow(mydata)==0){stop("No match for this analysisId. Please correct.", call. = FALSE)}
   # if(is.null(environment)){environment <- na.omit(unique(mydata$environment))}
-  if(is.null(myPed) || (nrow(myPed) == 0 ) ){stop("yearOfOrigin column was not matched in your original file. Please correct.", call. = FALSE)}
-  yearsToUse <- as.character(unique(myPed$yearOfOrigin))
-  mydata <- merge(mydata, myPed[,c("designation","yearOfOrigin")], by="designation", all.x=TRUE )
+  #if(is.null(myPed) || (nrow(myPed) == 0 ) ){stop("yearOfOrigin column was not matched in your original file. Please correct.", call. = FALSE)}
+  #yearsToUse <- as.character(unique(myPed$yearOfOrigin))
+  #mydata <- merge(mydata, myPed[,c("designation","yearOfOrigin")], by="designation", all.x=TRUE )
   # mydata <- mydata[which(!is.na(mydata$yearOfOrigin)),]
 
-  if(length(which(paramsPheno$parameter == "year")) == 0){
-    mydata$year <- mydata$yearOfOrigin
-    cat("Year column was not mapped, assuming year of origin and first year of testing is the same")
-  }
+  #if(length(which(paramsPheno$parameter == "year")) == 0){
+  #  mydata$year <- mydata$yearOfOrigin
+  #  cat("Year column was not mapped, assuming year of origin and first year of testing is the same")
+  #}
   ############################
   ## gg analysis
   p <- percentage/100
@@ -57,7 +59,7 @@ pgg <- function(
   # counter=1
   for(iTrait in trait){ # iTrait = trait[1]
     if(verbose){cat(paste("Analyzing trait", iTrait,"\n"))}
-    uEnvironments <- unique(mydata[,by])
+    uEnvironments <- unique(mydata[,by])[1]
     for(uE in uEnvironments){ # uE <- uEnvironments[1]
       # subset data
       if(verbose){cat(paste("Analyzing environment", uE,"\n"))}
@@ -73,23 +75,26 @@ pgg <- function(
       max.x<- max(mydataSub$predictedValue, na.rm = TRUE)
       mydataSubSorted <- mydataSub[with(mydataSub, order(-predictedValue)), ]
       mydataSubSortedSel <- mydataSubSorted[1:round(nrow(mydataSubSorted) * p),]
-      age <- mean(mydataSubSortedSel$year, na.rm=TRUE) - mean(mydataSubSortedSel$yearOfOrigin, na.rm=TRUE)
+      #age <- mean(mydataSubSortedSel$year, na.rm=TRUE) - mean(mydataSubSortedSel$yearOfOrigin, na.rm=TRUE)
       R <- r * sigma * i
-      ggAge =  R/age
-      nTrials = length(unique(mydataSub[,"environment"]))
+      #ggAge =  R/age
+      #nTrials = length(unique(mydataSub[,"environment"]))
+      nTrials = length(unique(mydata[,by]))-1
       nInds = length(unique(mydataSub[,"designation"]))
       nIndsSelected <- floor(nInds*p)
       ##
       phenoDTfile$metrics <- rbind(phenoDTfile$metrics,
                                    data.frame(module="pgg",analysisId=pggAnalysisId, trait= iTrait, environment=uE,
-                                              parameter=c("r","r2","sigmaG","meanG","min.G","max.G", "cycleLength","i","R","PGG","nEnvs","nInds","nIndsSel"),
-                                              method=c("sqrt(r2)","mean((G-PEV)/G)","sd(BLUP)","sum(x)/n","min(x)","max(x)","yearTest-yearOrigin","dnorm(qnorm(1 - p))/p","r*sigma*i","R/cycleLength","sum","sum","nInds*p"),
-                                              value=c(r,r2,sigma, mu, min.x, max.x, age, i, R, ggAge,nTrials, nInds, nIndsSelected),
+                                              #parameter=c("r","r2","sigmaG","meanG","min.G","max.G", "cycleLength","i","R","PGG","nEnvs","nInds","nIndsSel"),
+                                              parameter=c("r","r2","sigmaG","meanG","min.G","max.G", "i","PGG",paste("PGG in",cycle,"cycles"),"nEnvs","nInds","nIndsSel"),
+                                              #method=c("sqrt(r2)","mean((G-PEV)/G)","sd(BLUP)","sum(x)/n","min(x)","max(x)","yearTest-yearOrigin","dnorm(qnorm(1 - p))/p","r*sigma*i","R/cycleLength","sum","sum","nInds*p"),
+                                              method=c("sqrt(r2)","mean((G-PEV)/G)","sd(BLUP)","sum(x)/n","min(x)","max(x)","dnorm(qnorm(1 - p))/p","r*sigma*i","PGG*cycle","sum","sum","nInds*p"),
+                                              value=c(r,r2,sigma, mu, min.x, max.x, i, R, R*cycle ,nTrials, nInds, nIndsSelected),
                                               stdError=NA
                                    )
       )
       currentModeling <- data.frame(module="pgg", analysisId=pggAnalysisId,trait=iTrait, environment=uE,
-                                    parameter=c("percentage(%)","verbose","classifier"), value=c(percentage, verbose, by))
+                                    parameter=c("percentage(%)","verbose","classifier"), value=c(percentage, verbose, "across"))
       phenoDTfile$modeling <- rbind(phenoDTfile$modeling,currentModeling[,colnames(phenoDTfile$modeling)] )
     }
 
