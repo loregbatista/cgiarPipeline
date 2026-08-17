@@ -1071,6 +1071,7 @@ metLMMsolver <- function(
     # print(mix$VarDf)
 
     pp <- list()
+    ss <- NULL # initialize ss to NULL for each trait so we can detect model failure later
     if(!inherits(mix,"try-error") ){ 
       
       ## save the modeling used
@@ -1685,7 +1686,12 @@ metLMMsolver <- function(
     predSta <- phenoDTfile$predictions[which(phenoDTfile$predictions$analysisId %in% analysisId &
                                                phenoDTfile$predictions$trait == predSta_trait &
                                                phenoDTfile$predictions$environment %in% envCount[[iTrait]]),]
-    ## Save variance-component metrics
+    ## Save variance-component metrics (only when model succeeded and 'ss' exists)
+    
+    if (is.null(ss)) {
+      # Model failed path: build a minimal ss with just the residual variance
+      ss <- data.frame(VarComp = "residual", Variance = Ve, row.names = "residual")
+    }
     
     ss_metrics <- ss
     
@@ -1763,7 +1769,7 @@ metLMMsolver <- function(
     
     phenoDTfile$metrics <- rbind(
       phenoDTfile$metrics,
-      metric_vc[, colnames(phenoDTfile$metrics)],
+      if (!is.null(metric_vc)) metric_vc[, colnames(phenoDTfile$metrics)] else NULL,
       metric_base[, colnames(phenoDTfile$metrics)]
     )
     predictionsList[[iTrait]] <- predictionsTrait
