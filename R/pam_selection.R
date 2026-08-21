@@ -1858,6 +1858,12 @@ build_prodadv_review_plot_data <- function(dt,
   selected_traits <- unique(modeling_init$trait[!is.na(modeling_init$trait)])
   selected_traits <- selected_traits[nzchar(selected_traits)]
   
+  # Exclude traits marked as user_excluded_trait
+  excluded_trait_rows <- modeling_init[modeling_init$parameter == "user_excluded_trait", , drop = FALSE]
+  if (nrow(excluded_trait_rows) > 0) {
+    selected_traits <- setdiff(selected_traits, excluded_trait_rows$trait)
+  }
+  
   if (length(selected_traits) == 0) {
     stop("No traits found in the modeling table for this selection stamp.")
   }
