@@ -771,6 +771,11 @@ runInitialProdAdv <- function(analysisId = as.numeric(Sys.time()),
   }
 
   scaled_matrix <- scale(mta_preds_matrix)
+  # Replace NAs in zero-weight columns to prevent NA*0=NA propagation in index
+  zero_weight_cols <- which(index_weights == 0)
+  if (length(zero_weight_cols) > 0) {
+    scaled_matrix[, zero_weight_cols][is.na(scaled_matrix[, zero_weight_cols])] <- 0
+  }
   # Apply reliability penalty: element-wise multiplication with sqrt(reliability)
   reliability_penalized <- scaled_matrix * sqrt(rel_matrix)
   index_preds <- reliability_penalized %*% index_weights
@@ -1503,6 +1508,12 @@ build_prodadv_decision_table_data <- function(dt,
       trait_matrix <- as.matrix(pred_wide[, avail_traits, drop = FALSE])
       scaled_matrix <- scale(trait_matrix)
       w <- index_weights[avail_traits]
+      
+      # Replace NAs in zero-weight columns to prevent NA*0=NA propagation in index
+      zero_weight_cols <- which(w == 0)
+      if (length(zero_weight_cols) > 0) {
+        scaled_matrix[, zero_weight_cols][is.na(scaled_matrix[, zero_weight_cols])] <- 0
+      }
       
       # Apply reliability weighting (same as runInitialProdAdv)
       if ("reliability" %in% colnames(preds)) {
