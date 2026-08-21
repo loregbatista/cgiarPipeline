@@ -2183,6 +2183,9 @@ apply_prodadv_trait_rule <- function(trait_df, rule_def, check_entry_type_value 
     decision[trait_df$entryType == check_entry_type_value] <- "CHECK"
   }
   
+  # Ensure no NA decisions remain (can happen when trait_value is NA)
+  decision[is.na(decision)] <- "NOT SELECTED"
+  
   data.frame(
     designation = trait_df$designation,
     decision = decision,
