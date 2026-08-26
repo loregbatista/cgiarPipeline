@@ -429,8 +429,12 @@ metASREML <- function(phenoDTfile = NULL,
     
     if (!is.null(tpp_env_filter)) {
       valid_envs <- intersect(tpp_env_filter, rownames(envsToIncludeLocal))
-      if (length(valid_envs) < 2) {
-        warning(paste("TPP trait", iTrait, "skipped: fewer than 2 environments after filtering."))
+      # Allow single-environment traits when a genomic/pedigree kernel is used
+      # (the model can still estimate GEBVs without multiple environments)
+      has_relationship_kernel <- any(grepl("GenoA|GenoD|GenoAD|Pedigree", unlist(addG)))
+      min_envs_required <- if (has_relationship_kernel) 1L else 2L
+      if (length(valid_envs) < min_envs_required) {
+        warning(paste("TPP trait", iTrait, "skipped: fewer than", min_envs_required, "environments after filtering."))
         next
       }
       # Zero out environments not in the filter for this trait's column
@@ -511,9 +515,17 @@ metASREML <- function(phenoDTfile = NULL,
             if (length(grep("none", fixedTermprov)) != 0) {
               fixedTermprov = fixedTermprov[-grep("none", fixedTermprov)]
             }
+            # Drop fixed terms that have only 1 level in this trait's data
+            # (e.g., 'environment' when trait has a single environment)
+            fixedTermprov <- fixedTermprov[vapply(fixedTermprov, function(ft) {
+              vars <- unlist(strsplit(ft, ":"))
+              all(vapply(vars, function(v) {
+                if (v %in% colnames(prov)) length(unique(prov[[v]])) > 1 else TRUE
+              }, logical(1)))
+            }, logical(1))]
           }
           fixedTermModel[[iTrait]] = fixedTermprov
-          if (length(fixedTermprov) != 0 | !is.null(fixedTermprov)) {
+          if (length(fixedTermprov) > 0) {
             for (iFixed in 1:length(fixedTermprov)) {
               # for each element in the list # iFixed=1
               fixedTermTrait[[iTrait]] <- paste(fixedTermTrait[[iTrait]], fixedTermprov[iFixed], sep =
