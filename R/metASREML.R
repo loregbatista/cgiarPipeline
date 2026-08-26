@@ -667,6 +667,7 @@ metASREML <- function(phenoDTfile = NULL,
     # Assign objects to .GlobalEnv so predict.asreml() can find them
     assign("mydataSub", mydataSub, envir = .GlobalEnv)
     assign("w", w, envir = .GlobalEnv)
+    assign("predictedValue", mydataSub$predictedValue, envir = .GlobalEnv)
     if(exists("G") && !is.null(G)) assign("G", G, envir = .GlobalEnv)
     if(exists("Gm") && !is.null(Gm)) assign("Gm", Gm, envir = .GlobalEnv)
     if(exists("Gf") && !is.null(Gf)) assign("Gf", Gf, envir = .GlobalEnv)
@@ -682,7 +683,8 @@ metASREML <- function(phenoDTfile = NULL,
         na.action = na.method(x='include', y='include'),
         maxit = maxIters,
         weights = w,
-        family = family_arg
+        family = family_arg,
+        envir = .GlobalEnv
       )
     }, 
       error = function(e) {
@@ -739,7 +741,8 @@ metASREML <- function(phenoDTfile = NULL,
     }
     #fixed effect start
     fixTermObt = unlist(fixedTermModel[[iTrait]])
-    if (length(grep("none", fixTermObt)) == 0) {
+    fixTermObt = fixTermObt[fixTermObt != "1"]  # intercept already handled above
+    if (length(grep("none", fixTermObt)) == 0 && length(fixTermObt) > 0) {
       for (iGroupFixed in fixTermObt) {
         # iGroupFixed=unlist(fixedTermModel[[iTrait]])[1]
         pick <- coef(mix)[["fixed"]][grepl(iGroupFixed, rownames(coef(mix)[["fixed"]]))]
@@ -942,7 +945,8 @@ metASREML <- function(phenoDTfile = NULL,
       classifyTerm <- gsub("vm\\(\\s*([^,]+)\\s*,\\s*source\\s*=[^)]*\\)", "\\1", classifyTerm)
       classifyTerm <- gsub("fa\\(\\s*([^,]+)\\s*,[^)]*\\)", "\\1", classifyTerm)
       
-      blup = predict(mix, classify = classifyTerm)$pvals
+      blup_result = predict(mix, classify = classifyTerm, sed = TRUE)
+      blup = blup_result$pvals
       if (all(blup$status == "Aliased")) {
         statusmetrics = "Aliased estimation, problems with the model, please check!"
         stdError <- reliability <- rep(NA, dim(blup)[1])
@@ -954,7 +958,7 @@ metASREML <- function(phenoDTfile = NULL,
         stdError <- blup$std.error # random effect was just one column
         if (iGroup %in% subgroupGen) {Vg <- var(blup$predicted.value) + ((stdError^2)/length(stdError))} else {Vg<-NA}
         reliability <- abs((Vg - (stdError^2)) / Vg) # reliability <- abs((Vg - Matrix::diag(pev))/Vg)
-        lsdt <- qt(1 - 0.05 / 2, round(mix$nedf)) * predict(mix, classify = classifyTerm)$avsed
+        lsdt <- qt(1 - 0.05 / 2, round(mix$nedf)) * blup_result$avsed
       }
       
       badRels <- which(reliability > 1)
