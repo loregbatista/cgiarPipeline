@@ -1371,7 +1371,7 @@ metASREML <- function(phenoDTfile = NULL,
 ##Adding corr traits
   traitL <- lapply(predictionsList, `[`, , c("designation", "effectType","predictedValue"))  
   traitL <- lapply(predictionsList, function(df) {
-    df[df$effectType == "designationIdv",
+    df[grepl("^designation", df$effectType),
        c("designation", "predictedValue"),
        drop = FALSE]
   })  
