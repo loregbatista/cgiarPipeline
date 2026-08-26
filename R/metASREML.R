@@ -246,6 +246,7 @@ metASREML <- function(phenoDTfile = NULL,
         rownames(A1m) <- colnames(A1m) <- missing
         G <- enhancer::adiag1(G, A1m)
         G <- G + diag(1e-5, ncol(G), ncol(G))
+        assign("G", G, envir = .GlobalEnv)
     } # additive model
     if ("Relationship structure_GenoD" %in% covars) {
       #Dominance kernel
@@ -664,6 +665,8 @@ metASREML <- function(phenoDTfile = NULL,
     family_arg <- eval(parse(text = traitFamily[iTrait]))
     
     # Adjust model with asreml
+    # ASReml's predict() needs data accessible in the envir used (due to envir = .GlobalEnv)
+    assign("mydataSub", mydataSub, envir = .GlobalEnv)
     tryCatch({
       mix<<-asreml::asreml(
         fixed = fixed_formula,
