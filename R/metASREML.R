@@ -156,22 +156,8 @@ metASREML <- function(phenoDTfile = NULL,
   if (any(covkernel %in% covars)) {
     #New structure Geno info
     if (class(phenoDTfile$data$geno)[1] == "genlight") {
-      # Match analysisIdgeno to geno_imp names (handle numeric precision differences)
-      geno_imp_names <- names(phenoDTfile$data$geno_imp)
-      qas <- which(geno_imp_names == as.character(analysisIdgeno))
-      if (length(qas) == 0) {
-        # Try matching by rounding both sides to handle precision issues
-        qas <- which(round(as.numeric(geno_imp_names)) == round(as.numeric(analysisIdgeno)))
-      }
-      if (length(qas) > 0) {
-        Markers <- as.data.frame(phenoDTfile$data$geno_imp[qas])
-      } else {
-        # No match found: use raw genlight data (same fallback as metLMMsolver)
-        Markers <- as.matrix(phenoDTfile$data$geno)
-        if(length(which(is.na(Markers))) > 0){
-          stop("Markers have missing data and the genotype QA/QC Id did not match. Please verify you selected the correct Genotype QA/QC version.", call. = FALSE)
-        }
-      }
+      qas <- which(names(phenoDTfile$data$geno_imp) == analysisIdgeno)
+      Markers <- as.data.frame(phenoDTfile$data$geno_imp[qas])
     } else{#Old structure Geno info
       qas <- which(phenoDTfile$status$module == "qaGeno")
       qas <- qas[length(qas)]
@@ -921,19 +907,11 @@ metASREML <- function(phenoDTfile = NULL,
     }
     
     groupingSub = c(subgroupGen, subgroupInt)
-    # Build mapping from vm()-wrapped terms to raw factor names for predict()
-    oriGroupingSub = c(oriGen, subgroupInt)
     if (length(groupingSub)!=0){
-    for (ig in seq_along(groupingSub)) {
-      iGroup <- groupingSub[ig]
-      # For predict(classify=...), use raw factor names (strip vm() wrappers)
-      classifyTerm <- oriGroupingSub[ig]
-      if (is.na(classifyTerm) || is.null(classifyTerm)) classifyTerm <- iGroup
-      # Strip vm() and fa() wrappers from each component for classify
-      classifyTerm <- gsub("vm\\(\\s*([^,]+)\\s*,\\s*source\\s*=[^)]*\\)", "\\1", classifyTerm)
-      classifyTerm <- gsub("fa\\(\\s*([^,]+)\\s*,[^)]*\\)", "\\1", classifyTerm)
+    for (iGroup in groupingSub) {
+      #for( iGroup in names(groupingSub)){ # iGroup=groupingSub[4]
       
-      blup = predict(mix, classify = classifyTerm)$pvals
+      blup = predict(mix, classify = iGroup)$pvals
       if (all(blup$status == "Aliased")) {
         statusmetrics = "Aliased estimation, problems with the model, please check!"
         stdError <- reliability <- rep(NA, dim(blup)[1])
@@ -941,11 +919,11 @@ metASREML <- function(phenoDTfile = NULL,
         lsdt <- NA
       } else{
         statusmetrics = mix$converge
-        message(paste(" Calculating standar errors for",iTrait,classifyTerm,"predictions"))
+        message(paste(" Calculating standar errors for",iTrait,iGroup,"predictions"))
         stdError <- blup$std.error # random effect was just one column
         if (iGroup %in% subgroupGen) {Vg <- var(blup$predicted.value) + ((stdError^2)/length(stdError))} else {Vg<-NA}
         reliability <- abs((Vg - (stdError^2)) / Vg) # reliability <- abs((Vg - Matrix::diag(pev))/Vg)
-        lsdt <- qt(1 - 0.05 / 2, round(mix$nedf)) * predict(mix, classify = classifyTerm)$avsed
+        lsdt <- qt(1 - 0.05 / 2, round(mix$nedf)) * predict(mix, classify =iGroup)$avsed
       }
       
       badRels <- which(reliability > 1)
