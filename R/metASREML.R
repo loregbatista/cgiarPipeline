@@ -664,23 +664,23 @@ metASREML <- function(phenoDTfile = NULL,
     family_arg <- eval(parse(text = traitFamily[iTrait]))
     
     # Adjust model with asreml
-    # Assign objects to .GlobalEnv so predict.asreml() can find them
+    # predict.asreml() re-evaluates in the model's envir; assign everything there
     assign("mydataSub", mydataSub, envir = .GlobalEnv)
     assign("w", w, envir = .GlobalEnv)
-    assign("predictedValue", mydataSub$predictedValue, envir = .GlobalEnv)
-    if(exists("G") && !is.null(G)) assign("G", G, envir = .GlobalEnv)
-    if(exists("Gm") && !is.null(Gm)) assign("Gm", Gm, envir = .GlobalEnv)
-    if(exists("Gf") && !is.null(Gf)) assign("Gf", Gf, envir = .GlobalEnv)
-    if(exists("Gd") && !is.null(Gd)) assign("Gd", Gd, envir = .GlobalEnv)
-    if(exists("Gad") && !is.null(Gad)) assign("Gad", Gad, envir = .GlobalEnv)
-    if(exists("N") && !is.null(N)) assign("N", N, envir = .GlobalEnv)
-    if(exists("WI") && !is.null(WI)) assign("WI", WI, envir = .GlobalEnv)
+    # predict.asreml needs response and all data columns accessible as objects
+    for(.col in names(mydataSub)) assign(.col, mydataSub[[.col]], envir = .GlobalEnv)
+    if(exists("G", inherits=FALSE) && !is.null(G)) assign("G", G, envir = .GlobalEnv)
+    if(exists("Gm", inherits=FALSE) && !is.null(Gm)) assign("Gm", Gm, envir = .GlobalEnv)
+    if(exists("Gf", inherits=FALSE) && !is.null(Gf)) assign("Gf", Gf, envir = .GlobalEnv)
+    if(exists("Gd", inherits=FALSE) && !is.null(Gd)) assign("Gd", Gd, envir = .GlobalEnv)
+    if(exists("Gad", inherits=FALSE) && !is.null(Gad)) assign("Gad", Gad, envir = .GlobalEnv)
+    if(exists("N", inherits=FALSE) && !is.null(N)) assign("N", N, envir = .GlobalEnv)
+    if(exists("WI", inherits=FALSE) && !is.null(WI)) assign("WI", WI, envir = .GlobalEnv)
     tryCatch({
       mix<<-asreml::asreml(
         fixed = fixed_formula,
         random = random_formula,
         data = mydataSub,
-        na.action = na.method(x='include', y='include'),
         maxit = maxIters,
         weights = w,
         family = family_arg,
@@ -945,7 +945,7 @@ metASREML <- function(phenoDTfile = NULL,
       classifyTerm <- gsub("vm\\(\\s*([^,]+)\\s*,\\s*source\\s*=[^)]*\\)", "\\1", classifyTerm)
       classifyTerm <- gsub("fa\\(\\s*([^,]+)\\s*,[^)]*\\)", "\\1", classifyTerm)
       
-      blup_result = predict(mix, classify = classifyTerm, sed = TRUE)
+      blup_result = predict(mix, classify = classifyTerm)
       blup = blup_result$pvals
       if (all(blup$status == "Aliased")) {
         statusmetrics = "Aliased estimation, problems with the model, please check!"
@@ -958,7 +958,7 @@ metASREML <- function(phenoDTfile = NULL,
         stdError <- blup$std.error # random effect was just one column
         if (iGroup %in% subgroupGen) {Vg <- var(blup$predicted.value) + ((stdError^2)/length(stdError))} else {Vg<-NA}
         reliability <- abs((Vg - (stdError^2)) / Vg) # reliability <- abs((Vg - Matrix::diag(pev))/Vg)
-        lsdt <- qt(1 - 0.05 / 2, round(mix$nedf)) * blup_result$avsed
+        lsdt <- qt(1 - 0.05 / 2, round(mix$nedf)) * mean(stdError, na.rm = TRUE) * sqrt(2)
       }
       
       badRels <- which(reliability > 1)
