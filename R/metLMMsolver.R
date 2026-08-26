@@ -619,6 +619,8 @@ metLMMsolver <- function(
             }
           }
           fixedTermTrait[[iTrait]] <- unique(fixedTermProv[which(unlist(lapply(fixedTermProv,length)) > 0)])
+          # If all fixed terms were pruned (e.g., environment with 1 level), default to intercept
+          if(length(fixedTermTrait[[iTrait]]) == 0) fixedTermTrait[[iTrait]] <- list("1")
           # random formula per trait
           randomTermProv <- randomTerm
           if(!is.null(randomTermProv)){
@@ -1013,6 +1015,7 @@ metLMMsolver <- function(
     ## get formula
     fix <- paste( unlist(lapply(fixedTermSub, function(x){paste(x, collapse = ":")})), collapse = " + ")
     fix <- paste("predictedValue ~", fix)
+    if(verbose){message(paste("   Fixed formula:", fix))}
     
     if(use_formula){
       
@@ -1076,6 +1079,9 @@ metLMMsolver <- function(
 
     pp <- list()
     ss <- NULL # initialize ss to NULL for each trait so we can detect model failure later
+    if(inherits(mix,"try-error") && verbose){
+      message(paste("   Model failed for trait", iTrait, ":", as.character(mix)))
+    }
     if(!inherits(mix,"try-error") ){ 
       
       ## save the modeling used
