@@ -246,7 +246,6 @@ metASREML <- function(phenoDTfile = NULL,
         rownames(A1m) <- colnames(A1m) <- missing
         G <- enhancer::adiag1(G, A1m)
         G <- G + diag(1e-5, ncol(G), ncol(G))
-        assign("G", G, envir = .GlobalEnv)
     } # additive model
     if ("Relationship structure_GenoD" %in% covars) {
       #Dominance kernel
@@ -665,8 +664,16 @@ metASREML <- function(phenoDTfile = NULL,
     family_arg <- eval(parse(text = traitFamily[iTrait]))
     
     # Adjust model with asreml
-    # ASReml's predict() needs data accessible in the envir used (due to envir = .GlobalEnv)
+    # Assign objects to .GlobalEnv so predict.asreml() can find them
     assign("mydataSub", mydataSub, envir = .GlobalEnv)
+    assign("w", w, envir = .GlobalEnv)
+    if(exists("G") && !is.null(G)) assign("G", G, envir = .GlobalEnv)
+    if(exists("Gm") && !is.null(Gm)) assign("Gm", Gm, envir = .GlobalEnv)
+    if(exists("Gf") && !is.null(Gf)) assign("Gf", Gf, envir = .GlobalEnv)
+    if(exists("Gd") && !is.null(Gd)) assign("Gd", Gd, envir = .GlobalEnv)
+    if(exists("Gad") && !is.null(Gad)) assign("Gad", Gad, envir = .GlobalEnv)
+    if(exists("N") && !is.null(N)) assign("N", N, envir = .GlobalEnv)
+    if(exists("WI") && !is.null(WI)) assign("WI", WI, envir = .GlobalEnv)
     tryCatch({
       mix<<-asreml::asreml(
         fixed = fixed_formula,
@@ -675,8 +682,7 @@ metASREML <- function(phenoDTfile = NULL,
         na.action = na.method(x='include', y='include'),
         maxit = maxIters,
         weights = w,
-        family = family_arg,	
-        envir = .GlobalEnv
+        family = family_arg
       )
     }, 
       error = function(e) {
