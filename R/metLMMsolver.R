@@ -1328,7 +1328,10 @@ metLMMsolver <- function(
             }
             
             if (use_formula) {
-              idx <- start:(start + nEffects - 1L)
+              ## Use the same coefficient indices as the BLUPs (mix$ndxCoefficients).
+              ## Deriving them from a cumulative EDdf$Model offset is off by one for
+              ## random terms, which silently shifts the PEV diagonal.
+              idx <- pick
               nC <- nrow(mix$C)
               
               chunk <- 400L
@@ -1355,8 +1358,10 @@ metLMMsolver <- function(
               stdError <- sqrt(pmax(dvals, 0))
               
             } else {
-              stop <- start + nEffects - 1L
-              idx_block <- start:stop
+              ## Same coefficient indices the BLUPs were taken from. Using the
+              ## cumulative EDdf$Model offset here pulled in the last fixed-effect
+              ## row/column and dropped the last random one.
+              idx_block <- pick
               
               startPev <- seq(1L, length(blup), by = 500L)
               endPev <- c(startPev - 1L, length(blup))
