@@ -22,6 +22,15 @@ metASREML <- function(phenoDTfile = NULL,
   #save(phenoDTfile,analysisId,analysisIdgeno,fixedTerm,randomTerm,covMod, addG, nFA,envsToInclude, trait, traitFamily, useWeights,calculateSE, heritLB,  heritUB, meanLB, meanUB, maxIters,  verbose, file="NewAsr.RData")
   #library(asreml)
   '%!in%' <- function(x, y){! ('%in%'(x, y))}
+  ## Scale a relationship matrix so mean(diag(K)) = 1.
+  ## This puts the REML variance component on the individual (genetic value) scale
+  ## and matches the kernel scaling used by metLMMsolver.
+  .scale_mean_diag1 <- function(K) {
+    Km <- as.matrix(K)
+    d  <- mean(diag(Km), na.rm = TRUE)
+    if (!is.finite(d) || d <= 1e-12) return(Km)
+    Km / d
+  }
   covMod <- lapply(covMod, gsub, pattern = "\\.", replacement = "")
   addG <- covMod
   ## THIS FUNCTION PERFORMS A MULT TRIAL ANALYSIS USING asreml
@@ -151,7 +160,7 @@ metASREML <- function(phenoDTfile = NULL,
   covars<-unlist(covMod)
   randomTermForCovars<-randomTermForCovars[[1]]
   fixedTermForCovars <- setdiff(unique(unlist(fixedTerm)), c("environment", "designation"))
-  G=D=N=Gad=WI=NULL
+  G=D=N=Gad=WI=Gm=Gf=Gd=NULL
   
   if (any(covkernel %in% covars)) {
     #New structure Geno info
@@ -201,12 +210,9 @@ metASREML <- function(phenoDTfile = NULL,
       }
       MarkersAm <- Markers[intersect(rownames(Markers), c(males)), ]
       G <- sommer::A.mat(as.matrix(MarkersAm - ploidyFactor))
-      missing <- setdiff(c(males), rownames(G))
-      A1m <- diag(mean(diag(G)),
-                  nrow = length(missing),
-                  ncol = length(missing))
-      rownames(A1m) <- colnames(A1m) <- missing
-      G <- enhancer::adiag1(G, A1m)
+      # Individuals without marker data are dropped from the analysis (see kernelLevels
+      # filter in the trait loop) rather than padded with a diagonal block.
+      G <- .scale_mean_diag1(G)
       Gm <- G + diag(1e-5, ncol(G), ncol(G))
     } # additive model mother
     if ("Relationship structure_GenoA_father" %in% covars) {
@@ -220,12 +226,7 @@ metASREML <- function(phenoDTfile = NULL,
       }
       MarkersAf <- Markers[intersect(rownames(Markers), c(males)), ]
       G <- sommer::A.mat(as.matrix(MarkersAf - ploidyFactor))
-      missing <- setdiff(c(males), rownames(G))
-      A1m <- diag(mean(diag(G)),
-                  nrow = length(missing),
-                  ncol = length(missing))
-      rownames(A1m) <- colnames(A1m) <- missing
-      G <- enhancer::adiag1(G, A1m)
+      G <- .scale_mean_diag1(G)
       Gf <- G + diag(1e-5, ncol(G), ncol(G))
     } # additive model father
     if ("Relationship structure_GenoA" %in% covars) {
@@ -239,12 +240,7 @@ metASREML <- function(phenoDTfile = NULL,
         }
         MarkersA <- Markers[intersect(rownames(Markers), c(males)), ]
         G <- sommer::A.mat(as.matrix(MarkersA - ploidyFactor))
-        missing <- setdiff(c(males), rownames(G))
-        A1m <- diag(mean(diag(G)),
-                  nrow = length(missing),
-                  ncol = length(missing))
-        rownames(A1m) <- colnames(A1m) <- missing
-        G <- enhancer::adiag1(G, A1m)
+        G <- .scale_mean_diag1(G)
         G <- G + diag(1e-5, ncol(G), ncol(G))
     } # additive model
     if ("Relationship structure_GenoD" %in% covars) {
@@ -262,12 +258,7 @@ metASREML <- function(phenoDTfile = NULL,
         f <- rowSums(D) / ncol(D) #inbreeding fixed eff
         names(f) <- rownames(MarkersD)
         D <- sommer::D.mat(as.matrix(D))
-        missing <- setdiff(c(males), rownames(D))
-        A1m <- diag(mean(diag(D)),
-                    nrow = length(missing),
-                    ncol = length(missing))
-        rownames(A1m) <- colnames(A1m) <- missing
-        D <- enhancer::adiag1(D, A1m)
+        D <- .scale_mean_diag1(D)
         Gd <- D + diag(1e-5, ncol(D), ncol(D))
       } else{
         #autopolyploid formula for digenic dominance (Batista et al. 2022)
@@ -296,6 +287,7 @@ metASREML <- function(phenoDTfile = NULL,
         D <- crossprod(Q)
         denomDom <- sum(C_mat[, 1] * MAF^2 * (1 - MAF)^2)
         D <- D / denomDom
+        D <- .scale_mean_diag1(D)
         Gd <- D + diag(1e-5, ncol(D), ncol(D))
       }
     }#Dominance kernel
@@ -310,6 +302,7 @@ metASREML <- function(phenoDTfile = NULL,
       MarkersAD <- Markers[intersect(rownames(Markers), c(males)), ]
       MarkersAD <- apply(MarkersAD + 1, 2, log)
       Gad <- sommer::A.mat(as.matrix(MarkersAD))
+      Gad <- .scale_mean_diag1(Gad)
       Gad <- Gad + diag(1e-5, ncol(Gad), ncol(Gad))
     } # additive + dominance model
     ## PEDIGREE KERNEL
@@ -334,6 +327,26 @@ metASREML <- function(phenoDTfile = NULL,
       #Wchol <- t(chol(W))
     }
   }
+  ## Levels present in each relationship kernel. Individuals absent from the kernel
+  ## are dropped from the trait dataset (mirrors metLMMsolver) instead of being
+  ## padded into the kernel with a diagonal block.
+  kernelLevels <- list()
+  .addKernelLevels <- function(terms, K) {
+    if (is.null(K) || is.null(terms) || length(terms) == 0) return(invisible(NULL))
+    lv <- rownames(as.matrix(K))
+    if (is.null(lv)) return(invisible(NULL))
+    for (tm in terms) {
+      if (is.na(tm) || !nzchar(tm)) next
+      kernelLevels[[tm]] <<- if (is.null(kernelLevels[[tm]])) lv else intersect(kernelLevels[[tm]], lv)
+    }
+    invisible(NULL)
+  }
+  if ("Relationship structure_GenoA"        %in% covars) .addKernelLevels(randomTermForCovars[[2]], G)
+  if ("Relationship structure_GenoA_mother" %in% covars) .addKernelLevels("mother", Gm)
+  if ("Relationship structure_GenoA_father" %in% covars) .addKernelLevels("father", Gf)
+  if ("Relationship structure_GenoD"       %in% covars) .addKernelLevels(randomTermForCovars[[3]], Gd)
+  if ("Relationship structure_GenoAD"      %in% covars) .addKernelLevels(randomTermForCovars[[4]], Gad)
+
   ## COMPLETE THE CLEANING PARAMETERS (7 lines)
   names(traitFamily) <- trait
   heritLB <- rep(heritLB, length(trait))
@@ -510,6 +523,21 @@ metASREML <- function(phenoDTfile = NULL,
       if ("Relationship structure_GenoD" %in% covars &
           (!"f" %in% colnames(prov))) {
         prov$inbreeding <- f[match(prov$designation, names(f))]
+      }
+      
+      ## Drop records whose level is absent from the relationship kernel
+      if (length(kernelLevels) > 0) {
+        for (tm in names(kernelLevels)) {
+          if (tm %in% colnames(prov)) {
+            nBefore <- nrow(prov)
+            prov <- prov[as.character(prov[[tm]]) %in% kernelLevels[[tm]], , drop = FALSE]
+            nDropped <- nBefore - nrow(prov)
+            if (nDropped > 0 && isTRUE(verbose)) {
+              message(paste0("   Trait ", iTrait, ": dropped ", nDropped,
+                             " record(s) with no kernel entry for '", tm, "'"))
+            }
+          }
+        }
       }
       
       if (nrow(prov) > 0) {
