@@ -1584,10 +1584,10 @@ metLMMsolver <- function(
           phenoDTfile$metrics <- rbind(phenoDTfile$metrics,
                                        data.frame(module="mtaLmms",analysisId=mtaAnalysisId, trait= iTrait,
                                                   environment = metricEnv,
-                                                  parameter=c( paste(c("mean","sd", "r2","Var_PEVcorr","CV%","LSD95%"),iGroup,sep="_") ),
-                                                  method=c("sum(x)/n","sd","(G-PEV)/G","var(BLUPs)+tr(PEV)/n","(sd/mean)*100","t*avsed"),
-                                                  value=c(mean(prov[,"predictedValue"], na.rm=TRUE), sdP, median(reliability), var_PEV, cv, lsdt),
-                                                  stdError=c(NA,NA,sd(reliability, na.rm = TRUE)/sqrt(length(reliability)),NA,NA,NA)
+                                                  parameter=c( paste(c("mean","sd", "r2","Var","Var_PEVcorr","CV%","LSD95%"),iGroup,sep="_") ),
+                                                  method=c("sum(x)/n","sd","(G-PEV)/G","REML","var(BLUPs)+tr(PEV)/n","(sd/mean)*100","t*avsed"),
+                                                  value=c(mean(prov[,"predictedValue"], na.rm=TRUE), sdP, median(reliability), Vg, var_PEV, cv, lsdt),
+                                                  stdError=c(NA,NA,sd(reliability, na.rm = TRUE)/sqrt(length(reliability)),NA,NA,NA,NA)
                                        )
           )
           
