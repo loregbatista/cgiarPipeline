@@ -638,7 +638,16 @@ metASREML <- function(phenoDTfile = NULL,
     }
     if (names(sort(table(effectTypeTrait), decreasing = TRUE))[1] == "BLUP") {
       # if STA was BLUPs deregress
-      mydataSub$predictedValue <- mydataSub$predictedValue / mydataSub$reliability
+      ## Deregress only where reliability is usable. STA caps reliability at 0, so an
+      ## unguarded division yields Inf; those records keep their BLUP value and are
+      ## down-weighted anyway through the 1/stdError^2 weights.
+      relDeg <- mydataSub$reliability
+      okDeg  <- is.finite(relDeg) & relDeg > 0
+      if (any(!okDeg)) {
+        message(paste(" Skipping deregression for", sum(!okDeg),
+                      "record(s) with non-positive or non-finite reliability"))
+      }
+      mydataSub$predictedValue[okDeg] <- mydataSub$predictedValue[okDeg] / relDeg[okDeg]
     }
     ## calculate weights
     mydataSub <- mydataSub[with(mydataSub, order(environment)), ] # sort by environments
