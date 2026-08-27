@@ -990,23 +990,33 @@ metASREML <- function(phenoDTfile = NULL,
       ## computed by ASReml during the REML iterations. PEV = vcoeff * sigma2.
       ## No extra inversion or solve is needed. Same mechanism this file already
       ## uses for the fixed effects (vcoeff$fixed * sigma2).
+      ## Anchor on the full ASReml term label (iGroup), not on the bare factor name.
+      ## In a GxE model the interaction's variance component and coefficient names also
+      ## contain "designation", so a substring match is ambiguous and silently mixes
+      ## the main effect with the interaction.
       Var_REML <- NA; uVals <- NULL; pevVals <- NULL; uLevels <- NULL
+      isMainGen <- iGroup %in% subgroupGen
       if (!is.null(ss) && nrow(ss) > 0) {
-        vc_candidates <- rownames(ss)[!grepl("^units!", rownames(ss))]
-        hitVc <- vc_candidates[grepl(classifyTerm, vc_candidates, fixed = TRUE)]
+        vc_cand <- rownames(ss)[!grepl("^units!", rownames(ss))]
+        hitVc <- vc_cand[vc_cand == iGroup]
+        if (!length(hitVc)) hitVc <- vc_cand[startsWith(vc_cand, iGroup)]
+        if (!length(hitVc) && length(vc_cand) == 1L) hitVc <- vc_cand
         if (length(hitVc) > 0) Var_REML <- ss[hitVc[1], "component"]
       }
-      u_all  <- try(coef(mix)$random, silent = TRUE)
-      vc_all <- mix[["vcoeff"]][["random"]]
-      if (!inherits(u_all, "try-error") && !is.null(vc_all) &&
-          length(vc_all) == nrow(u_all)) {
-        keepU <- grepl(classifyTerm, rownames(u_all), fixed = TRUE)
-        if (any(keepU)) {
-          uVals   <- as.vector(u_all[keepU])
-          pevVals <- as.vector(vc_all[keepU]) * mix$sigma2
-          uLevels <- rownames(u_all)[keepU]
-          uLevels <- sub("^vm\\([^)]*\\)_", "", uLevels)          # vm(designation, source = G)_ID
-          uLevels <- sub(paste0("^", classifyTerm, "_"), "", uLevels)  # designation_ID
+      if (isMainGen) {
+        u_all  <- try(coef(mix)$random, silent = TRUE)
+        vc_all <- mix[["vcoeff"]][["random"]]
+        if (!inherits(u_all, "try-error") && !is.null(vc_all) &&
+            length(vc_all) == nrow(u_all)) {
+          rn    <- rownames(u_all)
+          keepU <- startsWith(rn, paste0(iGroup, "_"))
+          if (any(keepU)) {
+            uVals   <- unname(as.vector(u_all[keepU]))
+            pevVals <- unname(as.vector(vc_all[keepU]) * mix$sigma2)
+            ## strip the "<iGroup>_" prefix by position; iGroup contains regex
+            ## metacharacters such as ( ) , = so sub() is not safe here
+            uLevels <- substring(rn[keepU], nchar(iGroup) + 2L)
+          }
         }
       }
       if (all(blup$status == "Aliased")) {
@@ -1018,15 +1028,17 @@ metASREML <- function(phenoDTfile = NULL,
         statusmetrics = mix$converge
         message(paste(" Calculating standar errors for",iTrait,classifyTerm,"predictions"))
 
-        ## Align the PEV diagonal to the rows of the prediction table
+        ## Align the PEV diagonal to the rows of the prediction table. Require every
+        ## row to match; a partial match would mix terms, and NA names propagate into
+        ## data.frame() row.names further down.
         pev_i <- NULL
         if (!is.null(pevVals) && classifyTerm %in% names(blup)) {
           mi <- match(as.character(blup[[classifyTerm]]), uLevels)
-          if (sum(!is.na(mi)) > 0) pev_i <- pevVals[mi]
+          if (!anyNA(mi)) pev_i <- unname(pevVals[mi])
         }
-        if (is.null(pev_i)) pev_i <- blup$std.error^2  # fall back to prediction SEs
+        if (is.null(pev_i)) pev_i <- unname(blup$std.error^2)  # fall back to prediction SEs
 
-        stdError <- sqrt(pmax(pev_i, 0))
+        stdError <- unname(sqrt(pmax(pev_i, 0)))
 
         ## PEV-corrected genetic variance (scalar): var(BLUPs) + tr(PEV)/n.
         ## Uses the random-effect solutions and the coefficient-matrix diagonal,
@@ -1041,9 +1053,9 @@ metASREML <- function(phenoDTfile = NULL,
 
         ## Reliability against the REML variance component (kernels are scaled to
         ## mean(diag)=1, so k_ii averages 1)
-        Vg <- if (iGroup %in% subgroupGen) Var_REML else NA
+        Vg <- if (isMainGen) Var_REML else NA
         if (!is.na(Vg) && is.finite(Vg) && Vg > 1e-12) {
-          reliability <- 1 - (pev_i / Vg)
+          reliability <- unname(1 - (pev_i / Vg))
         } else {
           reliability <- rep(NA_real_, length(pev_i))
         }
@@ -1243,12 +1255,18 @@ metASREML <- function(phenoDTfile = NULL,
       )
      )
     
-    testGxE=which(c("environment_designation", "designation_environment",
-                    "environment:designation", "designation:environment") %in% names(pp)==T)
+    ## Index pp by NAME. `which(<names> %in% names(pp))` returns a position in the
+    ## 4-element candidate vector, not in pp, so pp[[testGxE]] picked up the wrong
+    ## element (typically the intercept) and the reshape below then failed.
+    gxeCandidates <- c("environment_designation", "designation_environment",
+                       "environment:designation", "designation:environment")
+    testGxE <- which(names(pp) %in% gxeCandidates)
     if("GenCorrMat" %in% names(pp)){predGenCorrMat<-pp[["GenCorrMat"]];meth1=rep("GenCorrFA",nrow(predGenCorrMat))}else{
       if(length(testGxE)!=0){
-        predGxE<-pp[[testGxE]]
-        df<-tidyr::separate(predGxE,designation,into=c("environment","designation"),sep=":")
+        predGxE<-pp[[testGxE[1]]]
+        df<-tidyr::separate(predGxE,designation,into=c("environment","designation"),
+                            sep=":", extra="merge", fill="right")
+        df<-df[!is.na(df$designation) & !is.na(df$environment), , drop=FALSE]
         wide <- data.frame(tidyr::pivot_wider(df,id_cols = designation,names_from = environment,values_from = predictedValue))
         rownames(wide)<-wide[,1]
         wide<-as.matrix(wide[,-1])
