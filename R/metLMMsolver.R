@@ -1509,7 +1509,27 @@ metLMMsolver <- function(
             }
             
           } else if (!is_fw_term) {
-            prov[, "predictedValue"] <- prov[, "predictedValue"] + mu
+            ## Besides the intercept, add the average effect of the fixed factors that
+            ## are not part of this random term, so predictions sit at the designation
+            ## mean rather than at the reference level of those factors. This matches
+            ## ASReml's predict(classify=), which averages over the levels of factors
+            ## not being classified, with equal weights.
+            ##
+            ## The stored fixed-effect predictions already include mu, so the level
+            ## deviation is (value - mu). The reference level absorbed into the
+            ## intercept has a deviation of 0 and is not stored, so the sum is divided
+            ## by the total number of levels in the data, not the number stored.
+            feAvg <- 0
+            for (iFe in setdiff(fixedEffects, term_vars)) {
+              provFe <- pp[[iFe]]
+              if (is.null(provFe) || !NROW(provFe)) next
+              if (!(iFe %in% colnames(mydataSub))) next          # skip interactions
+              if (is.numeric(mydataSub[[iFe]])) next             # covariate, not a factor
+              nLev <- length(unique(as.character(mydataSub[[iFe]])))
+              if (!is.finite(nLev) || nLev < 1) next
+              feAvg <- feAvg + sum(provFe[, "predictedValue"] - mu, na.rm = TRUE)/nLev
+            }
+            prov[, "predictedValue"] <- prov[, "predictedValue"] + mu + feAvg
           }
           
           sdP <- sd(prov[, "predictedValue"], na.rm = TRUE)
