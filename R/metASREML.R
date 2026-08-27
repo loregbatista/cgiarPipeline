@@ -957,6 +957,12 @@ metASREML <- function(phenoDTfile = NULL,
         message(paste(" Calculating standar errors for",iTrait,classifyTerm,"predictions"))
         stdError <- blup$std.error # random effect was just one column
         if (iGroup %in% subgroupGen) {Vg <- var(blup$predicted.value) + ((stdError^2)/length(stdError))} else {Vg<-NA}
+        # PEV-corrected genetic variance as a scalar: var(BLUPs) + tr(PEV)/n
+        if (iGroup %in% subgroupGen) {
+          Vg_pev <- var(blup$predicted.value, na.rm = TRUE) + mean(stdError^2, na.rm = TRUE)
+        } else {
+          Vg_pev <- NA
+        }
         reliability <- abs((Vg - (stdError^2)) / Vg) # reliability <- abs((Vg - Matrix::diag(pev))/Vg)
         lsdt <- qt(1 - 0.05 / 2, round(mix$nedf)) * mean(stdError, na.rm = TRUE) * sqrt(2)
       }
@@ -1046,12 +1052,15 @@ metASREML <- function(phenoDTfile = NULL,
                                                  Replace = "unknown")
       # save
       pp[[iGroup]] <- prov
-      # Extract REML variance component for this random effect
+      # Extract REML variance component for this random effect from summary(mix)$varcomp
       Var_REML <- NA
-      if (!is.null(ss)) {
-        vc_rows <- grep(classifyTerm, rownames(ss), value = TRUE)
-        if (length(vc_rows) > 0) {
-          Var_REML <- ss[vc_rows[1], "component"]
+      if (!is.null(ss) && nrow(ss) > 0) {
+        vc_names <- rownames(ss)
+        # exclude the residual row, then match on the raw factor name
+        vc_candidates <- vc_names[!grepl("^units!", vc_names)]
+        hit <- vc_candidates[grepl(classifyTerm, vc_candidates, fixed = TRUE)]
+        if (length(hit) > 0) {
+          Var_REML <- ss[hit[1], "component"]
         }
       }
       phenoDTfile$metrics <- rbind(
@@ -1080,7 +1089,7 @@ metASREML <- function(phenoDTfile = NULL,
             sdP,
             median(reliability),
             Var_REML,
-            Vg,
+            Vg_pev,
             cv,
             lsdt
           ),
@@ -1401,20 +1410,23 @@ metASREML <- function(phenoDTfile = NULL,
     predictedValue = CorrMatT[upper],
     environment = colnames(CorrMatT)[upper[,2]]
   )
-  meth2=rep("PearsonCorrelation",nrow(predCorrT))  
-  phenoDTfile$metrics <- rbind(
-    phenoDTfile$metrics,
-    data.frame(
-      module = "mtaAsr",
-      analysisId = mtaAnalysisId,
-      trait = "CorrTrait",
-      environment = "across",
-      parameter = paste0(predCorrT$designation,"_",predCorrT$environment),
-      method = meth2,
-      value = predCorrT$predictedValue,
-      stdError = rep(NA,nrow(predCorrT))
+  # Only write trait correlations when there is at least one trait pair
+  if (nrow(predCorrT) > 0) {
+    meth2=rep("PearsonCorrelation",nrow(predCorrT))
+    phenoDTfile$metrics <- rbind(
+      phenoDTfile$metrics,
+      data.frame(
+        module = "mtaAsr",
+        analysisId = mtaAnalysisId,
+        trait = "CorrTrait",
+        environment = "across",
+        parameter = paste0(predCorrT$designation,"_",predCorrT$environment),
+        method = meth2,
+        value = predCorrT$predictedValue,
+        stdError = rep(NA,nrow(predCorrT))
+      )
     )
-  )
+  }
   
   predictionsBind <- do.call(rbind, predictionsList)
   predictionsBind$analysisId <- mtaAnalysisId
