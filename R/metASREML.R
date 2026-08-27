@@ -975,6 +975,31 @@ metASREML <- function(phenoDTfile = NULL,
       
       blup_result = predict(mix, classify = classifyTerm)
       blup = blup_result$pvals
+
+      ## --- PEV of the random effects, straight from ASReml -----------------
+      ## mix$vcoeff$random holds the diagonal of the inverse coefficient matrix,
+      ## computed by ASReml during the REML iterations. PEV = vcoeff * sigma2.
+      ## No extra inversion or solve is needed. Same mechanism this file already
+      ## uses for the fixed effects (vcoeff$fixed * sigma2).
+      Var_REML <- NA; uVals <- NULL; pevVals <- NULL; uLevels <- NULL
+      if (!is.null(ss) && nrow(ss) > 0) {
+        vc_candidates <- rownames(ss)[!grepl("^units!", rownames(ss))]
+        hitVc <- vc_candidates[grepl(classifyTerm, vc_candidates, fixed = TRUE)]
+        if (length(hitVc) > 0) Var_REML <- ss[hitVc[1], "component"]
+      }
+      u_all  <- try(coef(mix)$random, silent = TRUE)
+      vc_all <- mix[["vcoeff"]][["random"]]
+      if (!inherits(u_all, "try-error") && !is.null(vc_all) &&
+          length(vc_all) == nrow(u_all)) {
+        keepU <- grepl(classifyTerm, rownames(u_all), fixed = TRUE)
+        if (any(keepU)) {
+          uVals   <- as.vector(u_all[keepU])
+          pevVals <- as.vector(vc_all[keepU]) * mix$sigma2
+          uLevels <- rownames(u_all)[keepU]
+          uLevels <- sub("^vm\\([^)]*\\)_", "", uLevels)          # vm(designation, source = G)_ID
+          uLevels <- sub(paste0("^", classifyTerm, "_"), "", uLevels)  # designation_ID
+        }
+      }
       if (all(blup$status == "Aliased")) {
         statusmetrics = "Aliased estimation, problems with the model, please check!"
         stdError <- reliability <- rep(NA, dim(blup)[1])
@@ -983,15 +1008,36 @@ metASREML <- function(phenoDTfile = NULL,
       } else{
         statusmetrics = mix$converge
         message(paste(" Calculating standar errors for",iTrait,classifyTerm,"predictions"))
-        stdError <- blup$std.error # random effect was just one column
-        if (iGroup %in% subgroupGen) {Vg <- var(blup$predicted.value) + ((stdError^2)/length(stdError))} else {Vg<-NA}
-        # PEV-corrected genetic variance as a scalar: var(BLUPs) + tr(PEV)/n
-        if (iGroup %in% subgroupGen) {
-          Vg_pev <- var(blup$predicted.value, na.rm = TRUE) + mean(stdError^2, na.rm = TRUE)
+
+        ## Align the PEV diagonal to the rows of the prediction table
+        pev_i <- NULL
+        if (!is.null(pevVals) && classifyTerm %in% names(blup)) {
+          mi <- match(as.character(blup[[classifyTerm]]), uLevels)
+          if (sum(!is.na(mi)) > 0) pev_i <- pevVals[mi]
+        }
+        if (is.null(pev_i)) pev_i <- blup$std.error^2  # fall back to prediction SEs
+
+        stdError <- sqrt(pmax(pev_i, 0))
+
+        ## PEV-corrected genetic variance (scalar): var(BLUPs) + tr(PEV)/n.
+        ## Uses the random-effect solutions and the coefficient-matrix diagonal,
+        ## so it is on the same footing as the metLMMsolver estimate.
+        if (iGroup %in% subgroupGen && !is.null(uVals)) {
+          Vg_pev <- var(uVals, na.rm = TRUE) + mean(pevVals, na.rm = TRUE)
+        } else if (iGroup %in% subgroupGen) {
+          Vg_pev <- var(blup$predicted.value, na.rm = TRUE) + mean(pev_i, na.rm = TRUE)
         } else {
           Vg_pev <- NA
         }
-        reliability <- abs((Vg - (stdError^2)) / Vg) # reliability <- abs((Vg - Matrix::diag(pev))/Vg)
+
+        ## Reliability against the REML variance component (kernels are scaled to
+        ## mean(diag)=1, so k_ii averages 1)
+        Vg <- if (iGroup %in% subgroupGen) Var_REML else NA
+        if (!is.na(Vg) && is.finite(Vg) && Vg > 1e-12) {
+          reliability <- 1 - (pev_i / Vg)
+        } else {
+          reliability <- rep(NA_real_, length(pev_i))
+        }
         lsdt <- qt(1 - 0.05 / 2, round(mix$nedf)) * mean(stdError, na.rm = TRUE) * sqrt(2)
       }
       
@@ -1080,17 +1126,6 @@ metASREML <- function(phenoDTfile = NULL,
                                                  Replace = "unknown")
       # save
       pp[[iGroup]] <- prov
-      # Extract REML variance component for this random effect from summary(mix)$varcomp
-      Var_REML <- NA
-      if (!is.null(ss) && nrow(ss) > 0) {
-        vc_names <- rownames(ss)
-        # exclude the residual row, then match on the raw factor name
-        vc_candidates <- vc_names[!grepl("^units!", vc_names)]
-        hit <- vc_candidates[grepl(classifyTerm, vc_candidates, fixed = TRUE)]
-        if (length(hit) > 0) {
-          Var_REML <- ss[hit[1], "component"]
-        }
-      }
       phenoDTfile$metrics <- rbind(
         phenoDTfile$metrics,
         data.frame(
