@@ -1582,7 +1582,7 @@ metLMMsolver <- function(
                                        data.frame(module="mtaLmms",analysisId=mtaAnalysisId, trait= iTrait,
                                                   environment = metricEnv,
                                                   parameter=c( paste(c("mean","sd", "r2","Var","Var_PEVcorr"),iGroup,sep="_") ),
-                                                  method=c("sum(x)/n","sd","(G-PEV)/G","REML","REML"),
+                                                  method=c("sum(x)/n","sd","(G-PEV)/G","var(BLUPs)","var(BLUPs)+tr(PEV)/n"),
                                                   value=c(mean(prov[,"predictedValue"], na.rm=TRUE), sdP, median(reliability), var(prov[,"predictedValue"], na.rm=TRUE), var_PEV),
                                                   stdError=c(NA,NA,sd(reliability, na.rm = TRUE)/sqrt(length(reliability)),NA,NA)
                                        )
