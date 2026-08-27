@@ -1046,6 +1046,14 @@ metASREML <- function(phenoDTfile = NULL,
                                                  Replace = "unknown")
       # save
       pp[[iGroup]] <- prov
+      # Extract REML variance component for this random effect
+      Var_REML <- NA
+      if (!is.null(ss)) {
+        vc_rows <- grep(classifyTerm, rownames(ss), value = TRUE)
+        if (length(vc_rows) > 0) {
+          Var_REML <- ss[vc_rows[1], "component"]
+        }
+      }
       phenoDTfile$metrics <- rbind(
         phenoDTfile$metrics,
         data.frame(
@@ -1054,7 +1062,7 @@ metASREML <- function(phenoDTfile = NULL,
           trait = iTrait,
           environment = paste(unique(envTypeSub), collapse = "_"),
           parameter = c(paste(
-            c("mean", "sd", "r2", "Var_PEVcorr", "CV%", "LSD95%"),
+            c("mean", "sd", "r2", "Var", "Var_PEVcorr", "CV%", "LSD95%"),
             effTypeSub,
             sep = "_"
           )),
@@ -1062,6 +1070,7 @@ metASREML <- function(phenoDTfile = NULL,
             "sum(x)/n",
             "sd",
             "(G-PEV)/G",
+            "REML",
             "var(BLUPs)+tr(PEV)/n",
             "(sd/mean)*100",
             "t*avsed"
@@ -1070,6 +1079,7 @@ metASREML <- function(phenoDTfile = NULL,
             mean(prov[, "predictedValue"], na.rm = TRUE),
             sdP,
             median(reliability),
+            Var_REML,
             Vg,
             cv,
             lsdt
@@ -1078,6 +1088,7 @@ metASREML <- function(phenoDTfile = NULL,
             NA,
             NA,
             sd(reliability, na.rm = TRUE) / sqrt(length(reliability)),
+            NA,
             NA,
             NA,
             NA
