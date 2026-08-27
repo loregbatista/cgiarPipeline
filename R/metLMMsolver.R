@@ -1578,13 +1578,16 @@ metLMMsolver <- function(
             metricEnv <- paste(unique(mydataSub$environment), collapse = "_")
           }
           
+          # LSD95% approximation from average standard error of differences
+          lsdt <- qt(1 - 0.05 / 2, max(1, nrow(prov) - 1)) * mean(stdError, na.rm = TRUE) * sqrt(2)
+          
           phenoDTfile$metrics <- rbind(phenoDTfile$metrics,
                                        data.frame(module="mtaLmms",analysisId=mtaAnalysisId, trait= iTrait,
                                                   environment = metricEnv,
-                                                  parameter=c( paste(c("mean","sd", "r2","Var","Var_PEVcorr"),iGroup,sep="_") ),
-                                                  method=c("sum(x)/n","sd","(G-PEV)/G","var(BLUPs)","var(BLUPs)+tr(PEV)/n"),
-                                                  value=c(mean(prov[,"predictedValue"], na.rm=TRUE), sdP, median(reliability), var(prov[,"predictedValue"], na.rm=TRUE), var_PEV),
-                                                  stdError=c(NA,NA,sd(reliability, na.rm = TRUE)/sqrt(length(reliability)),NA,NA)
+                                                  parameter=c( paste(c("mean","sd", "r2","Var_PEVcorr","CV%","LSD95%"),iGroup,sep="_") ),
+                                                  method=c("sum(x)/n","sd","(G-PEV)/G","var(BLUPs)+tr(PEV)/n","(sd/mean)*100","t*avsed"),
+                                                  value=c(mean(prov[,"predictedValue"], na.rm=TRUE), sdP, median(reliability), var_PEV, cv, lsdt),
+                                                  stdError=c(NA,NA,sd(reliability, na.rm = TRUE)/sqrt(length(reliability)),NA,NA,NA)
                                        )
           )
           
