@@ -323,6 +323,7 @@ metASREML <- function(phenoDTfile = NULL,
       WeatherK <- WeatherK[,which( !is.na(apply(WeatherK,2,var)) ), drop=FALSE]
       rownames(WeatherK) <- rownamesWeather
       WI <- sommer::A.mat(WeatherK)
+      WI <- .scale_mean_diag1(WI)   # metLMMsolver scales the weather kernel too
       WI <- WI + diag(1e-5, ncol(WI), ncol(WI))
       #Wchol <- t(chol(W))
     }
