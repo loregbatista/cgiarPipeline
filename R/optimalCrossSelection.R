@@ -85,9 +85,7 @@ ocs <- function(
       M <- apply(M[,which(missing < 0.9)],2,enhancer::imputev)
     }
 
-    if(ncol(M) > 5000){ # we remove that many markers if a big snp chip
-      A <- sommer::A.mat(M[,sample(1:ncol(M), 5000)])
-    }else{ A <- sommer::A.mat(M) };  M <- NULL
+    A <- sommer::A.mat(M);  M <- NULL
     if(relDTfile == "both"){ # only if ssgblup we merge
       A <- sommer::H.mat(N,A, tau=1,  omega=1, tolparinv=1e-6)
     }
