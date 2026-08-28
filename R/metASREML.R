@@ -323,6 +323,11 @@ metASREML <- function(phenoDTfile = NULL,
       WeatherK <- WeatherK[,which( !is.na(apply(WeatherK,2,var)) ), drop=FALSE]
       rownames(WeatherK) <- rownamesWeather
       WI <- sommer::A.mat(WeatherK)
+      ## Scaled like the marker kernels. A weather kernel has no canonical scale --
+      ## mean(diag) depends on how many covariates were supplied and how they were
+      ## standardised -- so without this the variance component is not comparable
+      ## between runs. The pedigree NRM below is deliberately left unscaled.
+      WI <- .scale_mean_diag1(WI)
       WI <- WI + diag(1e-5, ncol(WI), ncol(WI))
       #Wchol <- t(chol(W))
     }

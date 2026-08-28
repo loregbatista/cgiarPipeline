@@ -834,8 +834,19 @@ metLMMsolver <- function(
                     }
                     
                     # 3) Normalize kernel
+                    ## Scale to mean(diag(K)) = 1 so the variance component is the
+                    ## average prior variance of an individual effect, which makes
+                    ## components comparable across kernels and makes the usual
+                    ## h2 = Vg/(Vg+Ve) correct as reported.
+                    ##
+                    ## The pedigree NRM is deliberately EXCLUDED. Its diagonal is
+                    ## a_ii = 1 + F_i, defined relative to a non-inbred base population,
+                    ## so Vg is by convention base-population additive variance.
+                    ## Rescaling would divide out mean(F) and silently redefine Vg as a
+                    ## cohort-average quantity, breaking comparability with published
+                    ## heritabilities and with standard pedigree parameterisations.
                     is_kernel_factor <- kernel_factor %in%
-                      c("weather","geno","genoA","genoAD","genoD","pedigree") ||
+                      c("weather","geno","genoA","genoAD","genoD") ||
                       kernel_factor %in% traitsForExpCovariates
                     
                     if (is_kernel_factor) {
