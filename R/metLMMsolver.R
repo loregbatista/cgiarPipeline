@@ -1213,8 +1213,12 @@ metLMMsolver <- function(
           
           beta <- as.numeric(mix$coefMME[pick])
           
-          start <- sum(mix$EDdf[1:(which(mix$EDdf$Term == iGroupFixed) - 1), "Model"])
-          idx <- start:(start + length(pick) - 1L)
+          ## Index the coefficient positions directly. Deriving them from a cumulative
+          ## EDdf$Model offset is off by one, which returned the neighbouring
+          ## coefficient's variance (and the intercept's for the first level).
+          ## The reported value here is beta itself (no intercept added), so its
+          ## variance is the plain diagonal of C^-1 at those positions.
+          idx <- as.integer(pick)
           
           nC <- nrow(mix$C)
           E <- rhs_eye_spam(nC, idx)
@@ -1251,17 +1255,35 @@ metLMMsolver <- function(
         # shouldBeOne <- which(pick == 0)
         # if(length(shouldBeOne) > 0){pick[shouldBeOne] = 1}
         blue <- mix$coefMME[pick] + mu; names(blue) <- names(pick); #blue[1] <- blue[1]-mu
-        start <- sum(mix$EDdf[1:(which(mix$EDdf$Term == iGroupFixed) - 1),"Model"]) # we don't add a one because we need the intercept
         nEffects <- length(pick)
-        # indices of this fixed term within C
-        idx   <-  start:(start + nEffects - 1L) 
-        nC    <- nrow(mix$C)
+        ## The reported value is blue = mu + beta_i, so its variance is
+        ##   Var(mu + beta_i) = Cinv[int,int] + 2*Cinv[int,i] + Cinv[i,i]
+        ## i.e. diag(Xpred %*% Cinv %*% t(Xpred)) with Xpred carrying an intercept
+        ## column, which is the form staLMMsolver uses. The previous code took a
+        ## diagonal at start:(start+n-1) from a cumulative EDdf$Model offset, which
+        ## is one position below the coefficients and so returned the neighbouring
+        ## level's variance (and the intercept's for the first level).
+        idxCoef <- as.integer(pick)
+        idxInt  <- as.integer(mix$ndxCoefficients$`(Intercept)`)[1]
+        nC      <- nrow(mix$C)
+        
+        ## column of C^-1 at the intercept: gives Cinv[int,int] and Cinv[int,i].
+        ## If there is no intercept in the model these terms drop out and the
+        ## variance is just the coefficient diagonal.
+        cIntInt <- 0; cIntCoef <- rep(0, length(idxCoef))
+        if (length(idxInt) == 1L && !is.na(idxInt) && idxInt > 0) {
+          Eint  <- rhs_eye_spam(nC, idxInt)
+          Xint  <- spam::solve(C_sp, Eint)
+          xintv <- if (is.null(dim(Xint))) as.numeric(Xint) else as.numeric(Xint[, 1])
+          cIntInt  <- xintv[idxInt]
+          cIntCoef <- xintv[idxCoef]
+        }
         
         chunk <- 400L
-        dvals <- numeric(length(idx))
+        dvals <- numeric(length(idxCoef))
         pos   <- 1L
-        while (pos <= length(idx)) {
-          cols <- idx[pos:min(pos + chunk - 1L, length(idx))]
+        while (pos <= length(idxCoef)) {
+          cols <- idxCoef[pos:min(pos + chunk - 1L, length(idxCoef))]
           E    <- rhs_eye_spam(nC, cols)                      # nC x k (very skinny)
           X    <- spam::solve(C_sp, E)                        # solves C %*% X = E
           # each needed diagonal element is X[cols[j], j]
@@ -1269,7 +1291,7 @@ metLMMsolver <- function(
           dvals[pos:(pos + k - 1L)] <- X[cbind(cols, seq_len(k))]
           pos  <- pos + k
         }
-        stdError    <- sqrt(pmax(dvals, 0))
+        stdError    <- sqrt(pmax(cIntInt + 2*cIntCoef + dvals, 0))
 
         prov <- data.frame(designation=names(blue), predictedValue=blue, stdError=stdError, reliability=NA,
                            trait=iTrait, effectType=iGroupFixed, environment="(Intercept)" )
