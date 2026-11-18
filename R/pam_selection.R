@@ -3624,7 +3624,7 @@ saveMeetingProdAdvSelection <- function(
 #' @param traits character vector, column order of the result.
 #' @param placeholder reliabilities at or below this value count as "not estimated".
 #' @return numeric matrix with attribute "source" (reliability / proxy / none per trait).
-#' @noRd
+#' @export
 pam_reliability_matrix <- function(preds, designations, traits, placeholder = 1e-5) {
   m <- matrix(1, nrow = length(designations), ncol = length(traits),
               dimnames = list(designations, traits))

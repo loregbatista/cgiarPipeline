@@ -1,7 +1,7 @@
 Package: cgiarPipeline
 Type: Package
 Title: Special functions for multiple analytical pipelines related to Biometrics procedures.
-Version: 1.0.6
+Version: 1.0.7
 Date: 2023-09-09
 Author: Giovanny Covarrubias-Pazaran, Ibnou Dieng, Khaled Al-Sham'aa, Angela Pacheco, Christian Cadena, Sergio Cruz, Justine Bonifacio
 Maintainer: Giovanny Covarrubias-Pazaran <covaruberpaz@gmail.com>
